@@ -3,8 +3,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-    fastapi uvicorn[standard] sqlmodel sqlalchemy psycopg[binary] pydantic-settings pyyaml httpx boto3 alembic
+COPY apps/api/requirements.txt /app/requirements-api.txt
+RUN pip install --no-cache-dir -r /app/requirements-api.txt
 
 COPY ai-routing.yaml /app/ai-routing.yaml
 COPY apps/api/app /app/apps/api/app

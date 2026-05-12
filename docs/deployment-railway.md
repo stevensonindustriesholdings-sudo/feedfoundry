@@ -128,7 +128,7 @@ Or run `python3 scripts/smoke_staging.py` with `BASE_URL` set (see [Smoke test](
 | **API** | FastAPI (`uvicorn`), HTTP only; health checks use **`GET /health`** (liveness, no DB) |
 | **Worker** | Long-running Python process; **no HTTP port**; polls Postgres for jobs |
 
-Build both Docker images **from the monorepo root**:
+Build both Docker images **from the monorepo root** (API installs **`apps/api/requirements.txt`**, aligned with `pyproject.toml`):
 
 ```bash
 docker build -f apps/api/Dockerfile -t feedfoundry-api .

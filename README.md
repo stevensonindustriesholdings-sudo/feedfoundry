@@ -21,15 +21,13 @@ From the **repository root** (`feedfoundry/`):
 
 ### 1. Create a virtualenv and install API dependencies
 
-Hatchling editable installs may require a recent `pip`. If `pip install -e "apps/api[dev]"` fails, install dependencies explicitly:
+Hatchling editable installs may require a recent `pip`. If `pip install -e "apps/api[dev]"` fails, install production deps from the same file the Docker image uses, then dev tools:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install \
-  fastapi "uvicorn[standard]" sqlmodel sqlalchemy "psycopg[binary]" \
-  pydantic-settings pyyaml httpx boto3 alembic pytest ruff
+pip install -r apps/api/requirements.txt pytest ruff
 ```
 
 ### 2. Configure environment
