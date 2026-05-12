@@ -45,6 +45,15 @@ def is_production_env(app_env: str) -> bool:
 
 
 def _r2_configured(settings: Settings) -> bool:
+    """Return True when storage is fully configured via either path:
+
+    - **Cloudflare R2**: ``R2_ACCOUNT_ID`` set (endpoint constructed automatically), OR
+    - **Generic S3-compatible** (e.g. Railway buckets): ``R2_ENDPOINT_URL`` set explicitly.
+
+    Both paths additionally require ``R2_ACCESS_KEY_ID``, ``R2_SECRET_ACCESS_KEY``,
+    and non-empty bucket names.  In staging, ``r2_bucket_source`` and
+    ``r2_bucket_outputs`` may reference the same bucket.
+    """
     if not r2_s3_endpoint_url(settings):
         return False
     if _is_placeholder(settings.r2_access_key_id) or _is_placeholder(settings.r2_secret_access_key):
@@ -162,7 +171,7 @@ def validate_settings_for_startup(settings: Settings) -> None:
         if not _r2_configured(settings):
             errors.append(
                 "R2/S3 storage is not fully configured "
-                "(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, buckets)",
+                "(R2_ENDPOINT_URL or R2_ACCOUNT_ID, plus R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, buckets)",
             )
         if not _stripe_configured(settings):
             errors.append("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in staging/production")
@@ -208,7 +217,7 @@ def validate_startup_bootstrap(settings: Settings) -> None:
         if not _r2_configured(settings):
             errors.append(
                 "R2/S3 storage is not fully configured "
-                "(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, buckets)",
+                "(R2_ENDPOINT_URL or R2_ACCOUNT_ID, plus R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, buckets)",
             )
         if not _stripe_configured(settings):
             errors.append(

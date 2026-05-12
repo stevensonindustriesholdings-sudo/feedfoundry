@@ -46,12 +46,13 @@ def _s3_client(settings=None) -> Optional[BaseClient]:
     secret = (s.r2_secret_access_key or "").strip()
     if not endpoint or not key_id or not secret:
         return None
+    region = (s.r2_region or "auto").strip() or "auto"
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
         aws_access_key_id=key_id,
         aws_secret_access_key=secret,
-        region_name="auto",
+        region_name=region,
     )
 
 
