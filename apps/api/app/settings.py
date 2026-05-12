@@ -36,9 +36,15 @@ class Settings(BaseSettings):
     # Worker-related (API logs readiness; worker reads same env names)
     worker_poll_interval_seconds: int = 5
     storage_provider: str = "r2"
+    # Cloudflare R2: set R2_ACCOUNT_ID and the endpoint is constructed automatically.
+    # Generic S3-compatible storage (e.g. Railway buckets): set R2_ENDPOINT_URL directly.
+    # Only one of R2_ACCOUNT_ID or R2_ENDPOINT_URL is required; R2_ENDPOINT_URL takes precedence.
     r2_account_id: str = ""
+    r2_endpoint_url: str = ""
+    r2_region: str = "auto"
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
+    # In staging, r2_bucket_source and r2_bucket_outputs may reference the same bucket.
     r2_bucket_source: str = "feedfoundry-source-dev"
     r2_bucket_outputs: str = "feedfoundry-outputs-dev"
     r2_public_base_url: str = ""
@@ -72,8 +78,20 @@ def get_settings() -> Settings:
 
 
 def r2_s3_endpoint_url(settings: Optional[Settings] = None) -> str:
+    """Resolve the S3-compatible endpoint URL for storage.
+
+    Resolution order:
+    1. ``R2_ENDPOINT_URL`` — explicit endpoint for generic S3-compatible storage
+       (e.g. Railway buckets).  Takes precedence when set and non-empty.
+    2. ``R2_ACCOUNT_ID`` — constructs the Cloudflare R2 endpoint automatically
+       (``https://<account>.r2.cloudflarestorage.com``).
+    3. Neither set → returns ``""`` (storage not configured).
+    """
     s = settings or get_settings()
+    explicit = (s.r2_endpoint_url or "").strip()
+    if explicit:
+        return explicit
     account = (s.r2_account_id or "").strip()
-    if not account:
-        return ""
-    return f"https://{account}.r2.cloudflarestorage.com"
+    if account:
+        return f"https://{account}.r2.cloudflarestorage.com"
+    return ""
