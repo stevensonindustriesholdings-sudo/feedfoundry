@@ -6,7 +6,7 @@ Commercial posture is **annual hosted archive access** plus **processing credits
 
 ## Repository layout
 
-- `apps/api` — FastAPI backend (signed uploads, jobs, credits, manifests, webhooks)
+- `apps/web` — Next.js customer app (proxy to API, no secrets in browser)
 - `apps/worker` — polling worker and processing pipeline (Postgres job claims, R2 output writes)
 - `packages/schemas` — JSON Schema for hosted manifest, output bundle, AI config
 - `scripts/seed_dev.py` — dev org, user, annual access, wallet, demo media asset

@@ -58,3 +58,8 @@ Thumbs.db
 # Local data
 tmp/
 temp/
+
+# Node — FeedFoundry web (Next.js)
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/

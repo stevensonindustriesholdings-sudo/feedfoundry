@@ -1,0 +1,19 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-surface text-zinc-100;
+}
+
+a {
+  @apply text-accent underline-offset-4 hover:underline;
+}
+
+:focus-visible {
+  @apply outline outline-2 outline-offset-2 outline-accent;
+}
