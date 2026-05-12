@@ -168,7 +168,7 @@ Legacy **`GET /v1/health`** remains for older configs.
 ## Railway (staging)
 
 1. **Push this repo to GitHub** (see [docs/deployment-railway.md](docs/deployment-railway.md) — *Connect GitHub*). Suggested repo name: **`feedfoundry`**.
-2. In Railway, point the **API** and **Worker** services at that repo with **root build context** and Dockerfiles **`apps/api/Dockerfile`** and **`apps/worker/Dockerfile`** respectively (not a bare `python:3.12-slim` image with no `COPY`).
+2. In Railway, point the **API** and **Worker** services at that repo with **root build context** and Dockerfiles **`apps/api/Dockerfile`** and **`apps/worker/Dockerfile`** respectively (not a bare `python:3.12-slim` image with no `COPY`). For the API, leave the **custom start command empty** (use Dockerfile `CMD`) or use `sh -c 'uvicorn … --port ${PORT:-8000}'` so `PORT` is not passed through as a literal `$PORT`.
 
 Full checklist (GitHub, Dockerfile paths, `PORT`, public domain, env vars, redeploy order): **[docs/deployment-railway.md](docs/deployment-railway.md)**.
 

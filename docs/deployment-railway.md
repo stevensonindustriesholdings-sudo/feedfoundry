@@ -29,11 +29,15 @@ In the Railway project: open the **API** service → **Settings** (or **Source**
 | **Builder** | **Dockerfile** (not Nixpacks-only, not “empty” image). |
 | **Dockerfile path** | `apps/api/Dockerfile` |
 
-**Start command:** leave **blank** so the image **`CMD`** runs (recommended). The API Dockerfile already runs:
+**Start command:** leave **blank** so the image **`CMD`** runs (recommended). The API Dockerfile uses **shell form** so `PORT` expands:
 
-`uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`
+```text
+sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
+```
 
-If you set a custom start command instead, use the same `uvicorn` line and ensure **`PORT`** is honoured (Railway injects `PORT`).
+**Do not** set a bare `uvicorn … --port $PORT` (or `--port $PORT`) as the Railway start command without a shell — Uvicorn will treat `$PORT` as a literal string and crash. If you must override the start command, use:
+
+`sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'`
 
 **Public networking:** enable **Generate domain** (or attach your custom domain) on the **API** service so `/health`, `/docs`, and webhooks are reachable.
 
@@ -111,13 +115,15 @@ The API **fails fast on startup** in `staging` / `production` / `prod` if critic
 
 ## API start command
 
-From the API image (working directory and `PYTHONPATH` are set in `apps/api/Dockerfile`):
+From the API image (working directory and `PYTHONPATH` are set in `apps/api/Dockerfile`), the process must run **under a shell** so Railway’s `PORT` expands:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
 ```
 
-Railway’s default Dockerfile CMD already uses this pattern.
+The Dockerfile **`CMD`** uses that pattern. Do not use Docker **exec-form** `CMD ["uvicorn", …, "--port", "$PORT"]` — variables are not expanded.
+
+Railway’s `infra/railway/railway.json` `startCommand` uses the same `sh -c` wrapper if you copy it into the dashboard.
 
 ## Worker start command
 

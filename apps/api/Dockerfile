@@ -15,5 +15,5 @@ ENV PYTHONPATH=/app/apps/api
 ENV AI_ROUTING_CONFIG_PATH=/app/ai-routing.yaml
 
 EXPOSE 8000
-# Railway injects PORT; default 8000 for local docker run.
-CMD ["/bin/sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Railway injects PORT. Must run under a shell so ${PORT:-8000} expands (exec-form uvicorn + $PORT does not).
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -4,7 +4,7 @@ Railway reads **per-service** settings from the dashboard (or linked config). Th
 
 | File | Use for |
 |------|---------|
-| [`railway.json`](railway.json) | **API** service: Dockerfile `apps/api/Dockerfile`, health check `/health`. |
+| [`railway.json`](railway.json) | **API** service: Dockerfile `apps/api/Dockerfile`, health check `/health`, `startCommand` uses **`sh -c '…${PORT:-8000}…'`** so `PORT` expands. |
 | [`railway.worker.json`](railway.worker.json) | **Worker** service: Dockerfile `apps/worker/Dockerfile`, no HTTP health check. |
 
 Both require **repository root** as the Docker build context so `COPY ai-routing.yaml` and `COPY apps/...` succeed.
