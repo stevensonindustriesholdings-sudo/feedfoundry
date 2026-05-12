@@ -175,6 +175,50 @@ def validate_settings_for_startup(settings: Settings) -> None:
         raise ValueError("Invalid configuration:\n- " + "\n- ".join(errors))
 
 
+def validate_startup_bootstrap(settings: Settings) -> None:
+    """
+    Minimal checks so the process can bind and serve ``GET /health`` (Railway liveness).
+
+    For ``APP_ENV=staging``, full R2/Stripe/PUBLIC_URL enforcement is deferred to
+    :func:`collect_readiness` / ``GET /ready`` so incomplete staging env does not block
+    the container from becoming healthy.
+
+    For ``APP_ENV=production`` or ``prod``, this matches strict commercial posture:
+    database, internal key, HTTPS public URL, R2, and Stripe must be valid before boot.
+    """
+    errors: list[str] = []
+
+    if not _stripped(settings.database_url):
+        errors.append("DATABASE_URL is required")
+
+    if not _stripped(settings.ff_internal_api_key):
+        errors.append("FF_INTERNAL_API_KEY is required")
+
+    if is_strict_deployment_env(settings.app_env):
+        if _is_placeholder(settings.ff_internal_api_key):
+            errors.append(
+                "FF_INTERNAL_API_KEY must not be a placeholder value in staging/production",
+            )
+
+    if is_production_env(settings.app_env):
+        if not _stripped(settings.public_api_base_url):
+            errors.append("PUBLIC_API_BASE_URL is required in production")
+        if not re.match(r"^https://", _stripped(settings.public_api_base_url), re.I):
+            errors.append("PUBLIC_API_BASE_URL should use https in production")
+        if not _r2_configured(settings):
+            errors.append(
+                "R2/S3 storage is not fully configured "
+                "(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, buckets)",
+            )
+        if not _stripe_configured(settings):
+            errors.append(
+                "STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production",
+            )
+
+    if errors:
+        raise ValueError("Invalid configuration:\n- " + "\n- ".join(errors))
+
+
 def validate_worker_environment(settings: Settings) -> None:
     """
     Worker process startup validation (stricter in staging/production).

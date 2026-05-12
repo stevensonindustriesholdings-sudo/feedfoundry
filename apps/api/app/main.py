@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config.env_validation import validate_settings_for_startup
+from app.config.env_validation import validate_startup_bootstrap
 from app.routes import (
     admin,
     credits,
@@ -20,7 +20,7 @@ from app.settings import get_settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    validate_settings_for_startup(settings)
+    validate_startup_bootstrap(settings)
     yield
 
 

@@ -84,6 +84,12 @@ sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'
 
 **Health check path:** `GET /health` (see `infra/railway/railway.json` for a reference template).
 
+**Liveness vs readiness:** Railway’s health probe should hit **`/health`** (no DB). With **`APP_ENV=staging`**, the API process boots once **`DATABASE_URL`** and a non-placeholder **`FF_INTERNAL_API_KEY`** are set; missing R2/Stripe/PUBLIC URL surfaces as **`GET /ready`** returning **`503`** with details, not as a crash before bind. With **`APP_ENV=production`** (or **`prod`**), startup still **fails fast** if R2, Stripe, or HTTPS public URL is invalid — fix env or use **`staging`** until the stack is fully wired.
+
+**`PORT`:** Do **not** set a manual **`PORT`** variable in Railway unless you intend to override the platform-injected listen port. Leave **Custom Start Command** empty so the Dockerfile **`CMD`** runs (`sh -c '…${PORT:-8000}…'`). If the service **Networking → Target port** exists, align it with the port the process listens on (Railway’s injected **`PORT`**, or **8000** when unset locally).
+
+**Health check timeout:** If builds succeed but the first deploy is slow (cold start), raise the health check timeout (e.g. **30 → 120** seconds) temporarily, redeploy API only, then tune back down.
+
 ### 3. Worker service — same repo, different Dockerfile
 
 Open the **Worker** service → same GitHub repo and branch.
