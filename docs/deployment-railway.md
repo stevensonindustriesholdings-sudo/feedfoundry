@@ -6,6 +6,47 @@ This document describes a **staging-oriented** Railway layout: API, worker, and 
 
 If your API or worker service only shows **`python:3.12-slim`** (or “empty” deploy) with **no `COPY` of this repo**, Railway is **not** building from your application source. Fix it as follows for **each** HTTP service (API) and **each** worker service.
 
+### Recovery: “GitHub Repo not found”, Source Image, or npm commands
+
+If the API service shows **GitHub Repo not found**, **`Source Image: python:3.12-slim`**, **Pre-deploy: `npm run migrate`**, or **Start: `npm run start`**, the service is still wired like a **Node template**, not this repo.
+
+Do this **in order**:
+
+1. **GitHub access for Railway**  
+   - On **GitHub**: **Settings → Applications → Installed GitHub Apps** (or **OAuth Apps**) → **Railway** → **Configure**.  
+   - Under **Repository access**, ensure **`stevensonindustriesholdings-sudo/feedfoundry`** is allowed (or “All repositories” for a quick fix).  
+   - Save. If the repo was private or newly created, **re-authorize** so Railway can list it.
+
+2. **Disconnect the wrong deploy path**  
+   - In the **API** service on Railway: find **Source** / **Deploy** settings.  
+   - **Remove** or **disconnect** any **Source Image** / **Docker Hub image** / standalone **`python:3.12-slim`** deploy so the service is **not** image-only.  
+   - The live app must come from **GitHub → Dockerfile build**, not a placeholder base image.
+
+3. **Attach GitHub + Dockerfile (API)**  
+
+   | Field | Value |
+   |--------|--------|
+   | Source | **GitHub** → `stevensonindustriesholdings-sudo` / **`feedfoundry`** |
+   | Branch | **`main`** |
+   | Root directory | **`.`** or blank (monorepo root) |
+   | Builder | **Dockerfile** |
+   | Dockerfile path | **`apps/api/Dockerfile`** |
+
+4. **Clear Node/npm leftovers**  
+   - **Pre-deploy command:** **empty** (remove `npm run migrate`). Migrations for this stack are **`alembic`**, run manually or in a separate job — not npm.  
+   - **Custom Start Command:** **empty** (remove `npm run start`). The API image **`CMD`** runs Uvicorn (see `apps/api/Dockerfile`).
+
+5. **Networking (API only)**  
+   - **Public domain:** enabled.  
+   - **Health check path:** **`/health`**.  
+   - **Target / internal port:** Railway sets **`PORT`** in the container; the Dockerfile listens on **`${PORT:-8000}`**. If the UI asks for a **target port**, use **`8000`** unless Railway docs for your layout say otherwise (the process must match the port the proxy forwards to).
+
+6. **Redeploy API only**  
+   - Trigger a **new deployment** on the API service and open **Build logs**. You should see Docker **`COPY`** lines for `ai-routing.yaml` and `apps/api/...`. If you only see a bare slim image pull with no repo `COPY`, the GitHub Dockerfile build is still not active.
+
+7. **Worker**  
+   - Leave the worker service **unchanged** until **`GET /health`** on the API returns **200** with JSON. Then configure the worker with the **same** GitHub repo, root **`.`**, Dockerfile **`apps/worker/Dockerfile`**, no source image, blank pre-deploy and start command, **no** public domain.
+
 ### 1. Push this repository to GitHub
 
 Create an empty GitHub repository (suggested name: **`feedfoundry`**), then from your machine (repo root):
