@@ -4,7 +4,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    fastapi uvicorn[standard] sqlmodel sqlalchemy psycopg[binary] pydantic-settings pyyaml httpx boto3 alembic
+    fastapi uvicorn[standard] sqlmodel sqlalchemy psycopg[binary] pydantic-settings pyyaml httpx boto3 alembic stripe
 
 COPY ai-routing.yaml /app/ai-routing.yaml
 COPY apps/api/app /app/apps/api/app
