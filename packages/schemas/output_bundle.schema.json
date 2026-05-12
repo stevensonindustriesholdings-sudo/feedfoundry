@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://feedfoundry.dev/schemas/output_bundle.schema.json",
+  "title": "FeedFoundry Export Bundle Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "organisation_id", "outputs"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "job_id": { "type": "string" },
+    "organisation_id": { "type": "string" },
+    "media_asset_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["output_type", "storage_key", "content_type"],
+        "properties": {
+          "output_type": { "type": "string" },
+          "storage_key": { "type": "string" },
+          "content_type": { "type": "string" },
+          "byte_length": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    }
+  }
+}

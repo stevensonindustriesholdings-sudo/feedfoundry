@@ -1,0 +1,39 @@
+---
+description: AI cost-control and provider-routing rules
+alwaysApply: true
+---
+
+Every AI call must go through the AI router.
+
+Do not call provider SDKs directly from route handlers.
+
+Every AI request must include:
+- provider
+- model
+- module_name
+- job_id
+- max_input_tokens
+- max_output_tokens
+- temperature
+- timeout_seconds
+- max_retries
+- cost_ceiling_credits
+- fallback_provider
+- fallback_model
+
+Every response must log:
+- provider
+- model
+- module_name
+- job_id
+- input_tokens_estimated
+- output_tokens_reported_or_estimated
+- latency_ms
+- success/failure
+- retry_count
+- cost_estimate
+- rate_limit_headers if available
+
+If a job would exceed customer credits, do not start the job.
+
+If an AI module would exceed the per-job budget, fail safe and return a structured error.

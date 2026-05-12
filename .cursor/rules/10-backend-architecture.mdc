@@ -1,0 +1,18 @@
+---
+description: FeedFoundry backend and responsibility split
+alwaysApply: true
+---
+
+This monorepo is the **engine**: FastAPI API, worker, Postgres models, storage integration, Stripe webhooks, AI router, OpenAPI.
+
+**Base44** owns polished customer UI: landing, pricing, dashboard, uploads, job progress, outputs, wallet, annual access UI, admin panels. This repo may expose only minimal test pages or `/docs`.
+
+**Railway** hosts API service, worker, Postgres, optional Redis/cron. Heavier FFmpeg and AI work runs in the worker, not in Base44 backend functions.
+
+**Queue**: MVP uses Postgres-backed job polling; Redis/RQ is an intentional later step.
+
+**Storage**: R2 or S3-compatible buckets for source media, intermediates, outputs, exports, public manifest JSON.
+
+**No secrets in repo, manifests, export bundles, or client code.** Use env vars and server-side paths only.
+
+Job lifecycle must implement: estimate → reserve → process → debit/release/refund credits per ledger rules. Do not start jobs that exceed available credits.

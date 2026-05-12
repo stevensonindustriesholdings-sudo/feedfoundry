@@ -1,0 +1,15 @@
+---
+description: Railway deployment for FeedFoundry
+globs: "**/Dockerfile,**/railway.json,infra/**"
+alwaysApply: false
+---
+
+Deploy **two services** from this monorepo: `apps/api` (FastAPI) and `apps/worker` (Python worker). Share the same `DATABASE_URL` and storage credentials.
+
+Set all secrets in Railway environment variables, not in code. Use distinct envs for development, staging, production.
+
+Worker should scale horizontally only after queue semantics are safe (DB row locking or Redis migration).
+
+Prefer health checks on `/v1/health` for the API service.
+
+Review Railway MCP actions before applying; destructive operations are limited but changes affect production infrastructure.

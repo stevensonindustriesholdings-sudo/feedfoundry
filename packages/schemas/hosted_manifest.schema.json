@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://feedfoundry.dev/schemas/hosted_manifest.schema.json",
+  "title": "FeedFoundry Hosted Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "creator_slug",
+    "asset_slug",
+    "canonical_title",
+    "summary",
+    "chapters",
+    "topics",
+    "facts",
+    "faqs",
+    "ctas",
+    "links"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "creator_slug": { "type": "string", "minLength": 1 },
+    "asset_slug": { "type": "string", "minLength": 1 },
+    "canonical_title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string" },
+    "duration_seconds": { "type": ["number", "null"] },
+    "published_at": { "type": ["string", "null"], "format": "date-time" },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "start_seconds"],
+        "properties": {
+          "title": { "type": "string" },
+          "start_seconds": { "type": "number", "minimum": 0 },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement"],
+        "properties": {
+          "statement": { "type": "string" },
+          "source_span": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "faqs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "answer"],
+        "properties": {
+          "question": { "type": "string" },
+          "answer": { "type": "string" }
+        }
+      }
+    },
+    "ctas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "intent"],
+        "properties": {
+          "label": { "type": "string" },
+          "intent": { "type": "string" },
+          "url": { "type": ["string", "null"], "format": "uri" }
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "format": "uri" }
+    },
+    "seo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "meta_title": { "type": "string" },
+        "meta_description": { "type": "string" },
+        "keywords": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "youtube": { "type": "object" },
+        "podcast": { "type": "object" },
+        "patreon": { "type": "object" },
+        "website": { "type": "object" }
+      }
+    }
+  }
+}

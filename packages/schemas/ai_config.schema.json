@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://feedfoundry.dev/schemas/ai_config.schema.json",
+  "title": "FeedFoundry AI module runtime request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "model",
+    "module_name",
+    "job_id",
+    "max_input_tokens",
+    "max_output_tokens",
+    "temperature",
+    "timeout_seconds",
+    "max_retries",
+    "cost_ceiling_credits",
+    "fallback_provider",
+    "fallback_model"
+  ],
+  "properties": {
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "module_name": { "type": "string" },
+    "job_id": { "type": "string" },
+    "max_input_tokens": { "type": "integer", "minimum": 1 },
+    "max_output_tokens": { "type": "integer", "minimum": 1 },
+    "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+    "timeout_seconds": { "type": "integer", "minimum": 1 },
+    "max_retries": { "type": "integer", "minimum": 0 },
+    "cost_ceiling_credits": { "type": "number", "minimum": 0 },
+    "fallback_provider": { "type": "string" },
+    "fallback_model": { "type": "string" }
+  }
+}

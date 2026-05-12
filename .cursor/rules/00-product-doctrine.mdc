@@ -1,0 +1,25 @@
+---
+description: FeedFoundry product doctrine
+alwaysApply: true
+---
+
+FeedFoundry is a creator archive intelligence engine.
+
+Never implement URL ingestion in V1. All jobs begin from uploaded files.
+
+The output set is:
+- Transcript
+- Clean transcript
+- Chapters
+- Clip candidates
+- Show notes
+- Metadata
+- CTAs
+- Fact Sheet
+- FAQs
+- Hosted Manifest
+- Export bundle
+
+The business model is annual access/hosting plus processing credits, not classic monthly SaaS.
+
+Use clear schemas, explicit job states, and strict AI cost controls.

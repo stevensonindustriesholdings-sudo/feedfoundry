@@ -1,0 +1,166 @@
+global:
+  dev_monthly_ai_budget_usd: 50
+  staging_monthly_ai_budget_usd: 100
+  production_monthly_ai_budget_usd: 1000
+
+  soft_budget_alert_percent: 60
+  throttle_budget_percent: 80
+  hard_stop_budget_percent: 95
+
+  default_timeout_seconds: 120
+  default_max_retries: 3
+  retry_backoff_initial_seconds: 2
+  retry_backoff_max_seconds: 60
+  retry_jitter: true
+
+  max_concurrent_jobs_per_org: 2
+  max_pending_jobs_per_org: 10
+  max_concurrent_ai_calls_per_worker: 3
+
+  fail_closed_on_missing_cost_estimate: true
+  fail_closed_on_missing_credit_reservation: true
+
+plans:
+  podcast_lite:
+    max_media_minutes_per_job: 90
+    max_file_size_gb: 2
+    included_annual_credits: 100
+    max_running_jobs: 1
+
+  creator_core:
+    max_media_minutes_per_job: 180
+    max_file_size_gb: 5
+    included_annual_credits: 300
+    max_running_jobs: 2
+
+  creator_studio:
+    max_media_minutes_per_job: 480
+    max_file_size_gb: 15
+    included_annual_credits: 1500
+    max_running_jobs: 4
+
+modules:
+  transcribe:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_TRANSCRIPTION_MODEL
+    fallback:
+      provider: local
+      model_env: LOCAL_TRANSCRIPTION_MODEL
+    max_retries: 3
+    timeout_seconds: 600
+    cost_ceiling_credits_per_media_hour: 20
+
+  transcript_cleaner:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    fallback:
+      provider: mistral
+      model_env: MISTRAL_CHEAP_TEXT_MODEL
+    max_input_tokens: 60000
+    max_output_tokens: 12000
+    temperature: 0.2
+    cost_ceiling_credits: 8
+
+  chapters:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    fallback:
+      provider: google
+      model_env: GOOGLE_CHEAP_TEXT_MODEL
+    max_input_tokens: 60000
+    max_output_tokens: 6000
+    temperature: 0.2
+    cost_ceiling_credits: 4
+
+  show_notes:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_STANDARD_TEXT_MODEL
+    fallback:
+      provider: anthropic
+      model_env: ANTHROPIC_STANDARD_TEXT_MODEL
+    max_input_tokens: 80000
+    max_output_tokens: 9000
+    temperature: 0.4
+    cost_ceiling_credits: 8
+
+  metadata:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    fallback:
+      provider: groq
+      model_env: GROQ_FAST_TEXT_MODEL
+    max_input_tokens: 40000
+    max_output_tokens: 5000
+    temperature: 0.3
+    cost_ceiling_credits: 3
+
+  fact_sheet:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_STANDARD_TEXT_MODEL
+    fallback:
+      provider: anthropic
+      model_env: ANTHROPIC_STANDARD_TEXT_MODEL
+    max_input_tokens: 80000
+    max_output_tokens: 10000
+    temperature: 0.1
+    cost_ceiling_credits: 8
+
+  faqs:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    fallback:
+      provider: deepseek
+      model_env: DEEPSEEK_CHEAP_TEXT_MODEL
+    max_input_tokens: 60000
+    max_output_tokens: 7000
+    temperature: 0.3
+    cost_ceiling_credits: 4
+
+  ctas:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    fallback:
+      provider: mistral
+      model_env: MISTRAL_CHEAP_TEXT_MODEL
+    max_input_tokens: 25000
+    max_output_tokens: 3000
+    temperature: 0.5
+    cost_ceiling_credits: 2
+
+  hosted_manifest:
+    enabled: true
+    primary:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    fallback:
+      provider: local
+      model_env: LOCAL_JSON_REPAIR_MODEL
+    max_input_tokens: 60000
+    max_output_tokens: 12000
+    temperature: 0.1
+    require_json_schema: true
+    cost_ceiling_credits: 5
+
+quality_gates:
+  require_transcript_before_outputs: true
+  require_fact_sheet_for_manifest: true
+  require_faqs_for_manifest: true
+  validate_json_schema: true
+  reject_empty_outputs: true
+  reject_manifest_without_canonical_url: false

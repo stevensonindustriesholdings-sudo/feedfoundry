@@ -1,0 +1,1 @@
+"""FeedFoundry FastAPI application package."""
