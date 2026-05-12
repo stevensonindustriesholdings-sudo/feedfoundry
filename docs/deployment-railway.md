@@ -96,7 +96,7 @@ The API container runs Uvicorn on **`${PORT:-8000}`** (Railway sets `PORT`).
 
 Copy [`.env.example`](../.env.example) as a checklist. At minimum for **staging/production**:
 
-- **Database**: `DATABASE_URL` (Postgres URL, e.g. `postgresql+psycopg://…`)
+- **Database**: `DATABASE_URL` — copy or **reference** the connection string from your Railway **Postgres** service into both **API** and **Worker** (identical value).
 - **App**: `APP_ENV=staging` (or `production`), `PUBLIC_API_BASE_URL` (HTTPS URL of this API service; required in strict tiers)
 - **Internal auth**: `FF_INTERNAL_API_KEY` (non-placeholder in strict tiers)
 - **R2**: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_SOURCE`, `R2_BUCKET_OUTPUTS`
