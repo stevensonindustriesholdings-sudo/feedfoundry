@@ -7,8 +7,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-    sqlmodel sqlalchemy psycopg[binary] pyyaml pydantic-settings httpx boto3
+COPY apps/worker/requirements.txt /app/requirements-worker.txt
+RUN pip install --no-cache-dir -r /app/requirements-worker.txt
 
 COPY ai-routing.yaml /app/ai-routing.yaml
 COPY apps/api/app /app/apps/api/app
