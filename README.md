@@ -2,7 +2,7 @@
 
 Creator archive intelligence engine: upload media, process with FFmpeg and AI on Railway, expose structured outputs via a FastAPI service for Base44 and other clients.
 
-Commercial posture is **annual hosted archive access** plus a **processing allowance** (metered per job on an internal ledger; not monthly subscription SaaS). Customer-facing copy should say **processing allowance** / **included processing**, not “credits.”
+Commercial posture is **annual hosted archive access** and a **creator archive** on the engine side: a **processing allowance** measured in **processing minutes** / **processing time** (not monthly subscription SaaS). Customer-facing copy should say **processing allowance**, **included processing minutes**, or **processing hours** — not “credits.”
 
 **Operator runbook (setup, env, Railway, Base44, AI):** [docs/runbook.md](docs/runbook.md)
 
@@ -23,11 +23,11 @@ From the **repository root** (`feedfoundry/`):
 
 ### 1. Create a virtualenv and install API dependencies
 
-Hatchling editable installs may require a recent `pip`. If `pip install -e "apps/api[dev]"` fails, install production deps from the same file the Docker image uses, then dev tools:
+Use a venv under **`apps/api/.venv`** (shared convention for API + worker imports). Hatchling editable installs may require a recent `pip`. If `pip install -e "apps/api[dev]"` fails, install production deps from the same file the Docker image uses, then dev tools:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv apps/api/.venv
+source apps/api/.venv/bin/activate
 pip install -U pip
 pip install -r apps/api/requirements.txt pytest ruff
 ```
@@ -62,14 +62,14 @@ export DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/feedfoundr
 PYTHONPATH=apps/api python scripts/seed_dev.py
 ```
 
-This creates (idempotent where possible) `org_dev_demo`, active annual access (`creator_core` / 300 included processing units on the internal wallet from the routing pack), a wallet, an `annual_grant` transaction with idempotency key `ff:seed_dev:annual_grant`, and a demo `MediaAsset` `ma_dev_demo` with slugs `demo-creator` / `episode-001`.
+This creates (idempotent where possible) `org_dev_demo`, active annual access (`creator_core` / **300 included processing minutes** on the internal wallet from the routing pack), a wallet, an `annual_grant` transaction with idempotency key `ff:seed_dev:annual_grant`, and a demo `MediaAsset` `ma_dev_demo` with slugs `demo-creator` / `episode-001`.
 
 **Production guard:** the script exits unless `ALLOW_DEV_SEED=true` when `APP_ENV` is `production` or `prod`. Never set `ALLOW_DEV_SEED` on a real production database unless you explicitly intend to insert demo data.
 
 ### 5. Start the API
 
 ```bash
-source .venv/bin/activate
+source apps/api/.venv/bin/activate
 cd apps/api
 export DATABASE_URL=...   # same as above
 export FF_INTERNAL_API_KEY=replace_me
@@ -79,7 +79,7 @@ PYTHONPATH=. uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### 6. Start the worker (separate terminal)
 
 ```bash
-source .venv/bin/activate
+source apps/api/.venv/bin/activate
 pip install -r apps/worker/requirements.txt
 export DATABASE_URL=...   # same database
 # Same R2 env vars as the API; optional for local:
@@ -88,33 +88,23 @@ cd apps/worker
 PYTHONPATH=../api:. python worker.py
 ```
 
-`PYTHONPATH` must include `apps/api` so the worker can import `app.*` and share the credit ledger.
+`PYTHONPATH` must include `apps/api` so the worker can import `app.*` and share the processing-minute ledger.
 
 ### 7. Run tests
 
 ```bash
-source .venv/bin/activate
-cd apps/api
-PYTHONPATH=. pytest tests/ -q
-cd ../worker
-PYTHONPATH=../api:. pytest tests/ -q
-cd ../..
+cd apps/api && source .venv/bin/activate && python -m pytest -q
+cd ../worker && PYTHONPATH=../api:. python -m pytest -q
 ```
 
-From repo root in one shot (after the same `venv` + installs as above):
-
-```bash
-( cd apps/api && PYTHONPATH=. pytest tests/ -q ) && ( cd apps/worker && PYTHONPATH=../api:. pytest tests/ -q )
-```
-
-This runs the full API suite (credit ledger, upload→job slice, auth errors, env templates) plus worker pipeline and settlement tests.
+Web (from `apps/web`): `npm run lint`, `npm run typecheck`, `npm run build` (install deps separately if needed).
 
 ### 8. Smoke test (local API must be running)
 
 From repo root (set `BASE_URL` to your running API, e.g. `http://127.0.0.1:8000`):
 
 ```bash
-source .venv/bin/activate
+source apps/api/.venv/bin/activate
 export BASE_URL=http://127.0.0.1:8000
 export SMOKE_INTERNAL_KEY=replace_me
 export SMOKE_ORG_ID=org_dev_demo
@@ -133,25 +123,51 @@ export API_KEY=replace_me
 export H="Authorization: Bearer $API_KEY"
 export O="X-Org-Id: org_dev_demo"
 
+# Account (canonical processing-minute balance + annual access)
+curl -sS "http://localhost:8000/v1/account" -H "$H" -H "$O"
+curl -sS "http://localhost:8000/v1/account/usage" -H "$H" -H "$O"
+# Deprecated compatibility alias only — same JSON as /v1/account; do not use “credits” in product copy
+curl -sS "http://localhost:8000/v1/account/credits" -H "$H" -H "$O"
+
+# Output kinds catalog
+curl -sS "http://localhost:8000/v1/catalog/outputs" -H "$H" -H "$O"
+
 # Presign upload (requires active annual access on the org)
 curl -sS -X POST "http://localhost:8000/v1/uploads/presign" \
   -H "$H" -H "$O" -H "Content-Type: application/json" \
   -d '{"filename":"clip.mp4","content_type":"video/mp4","file_size_bytes":1048576,"media_type":"video"}'
 
-# Create job (use media_asset_id from presign response; minimum outputs for a small estimate)
+# After browser/client PUT to upload_url — confirm object landed
+curl -sS -X POST "http://localhost:8000/v1/uploads/complete" \
+  -H "$H" -H "$O" -H "Content-Type: application/json" \
+  -d '{"media_asset_id":"ma_..."}'
+
+# Create job (use media_asset_id; minimum outputs for a small estimate)
 curl -sS -X POST "http://localhost:8000/v1/jobs" \
   -H "$H" -H "$O" -H "Content-Type: application/json" \
   -d '{"media_asset_id":"ma_...","requested_outputs":["transcript"]}'
 
+# List jobs (paging + optional status filter)
+curl -sS "http://localhost:8000/v1/jobs?status=queued&limit=50&offset=0" -H "$H" -H "$O"
+
 # Job status
 curl -sS "http://localhost:8000/v1/jobs/job_..." -H "$H" -H "$O"
 
-# Account balance (internal route name; expose as “processing allowance” in UI)
-curl -sS "http://localhost:8000/v1/account/credits" -H "$H" -H "$O"
+# Cancel (releases reserved processing minutes when eligible)
+curl -sS -X POST "http://localhost:8000/v1/jobs/job_.../cancel" -H "$H" -H "$O"
 
-# Outputs (signed download URLs; public manifest is unauthenticated)
+# Outputs (signed download URLs) + per-job doctrine catalog
 curl -sS "http://localhost:8000/v1/jobs/job_.../outputs" -H "$H" -H "$O"
+curl -sS "http://localhost:8000/v1/jobs/job_.../outputs/catalog" -H "$H" -H "$O"
+
+# Public manifest (unauthenticated)
 curl -sS "http://localhost:8000/v1/manifests/demo-creator/episode-001.json"
+```
+
+**Errors (canonical flat body on 4xx/5xx):**
+
+```json
+{"code": "machine_readable_code", "message": "Human-readable message.", "fields": []}
 ```
 
 **Object key layout (R2):**

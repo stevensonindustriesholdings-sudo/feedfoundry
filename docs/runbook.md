@@ -10,6 +10,8 @@ FeedFoundry is a **creator archive intelligence engine**. Creators **upload** th
 
 **V1 constraint:** there is **no URL ingestion**. Every job starts from an uploaded object in your bucket, not from an arbitrary external link.
 
+**Current `/v1` surface (integrators):** `GET /v1/account`, `GET /v1/account/usage`, `GET /v1/account/credits` (deprecated compatibility alias only), `GET /v1/catalog/outputs`, `POST /v1/uploads/presign`, `POST /v1/uploads/complete`, `POST /v1/jobs`, `GET /v1/jobs` (query `status`, `limit`, `offset`), `GET /v1/jobs/{job_id}`, `POST /v1/jobs/{job_id}/cancel`, `GET /v1/jobs/{job_id}/outputs`, `GET /v1/jobs/{job_id}/outputs/catalog`, plus existing manifest routes under `/v1/manifests/...`. Errors: flat JSON `{"code","message","fields"}`.
+
 This monorepo is the **engine** (API + worker + schemas + prompts). A separate product layer (e.g. **Base44**) owns polished customer UI, auth, and payment UX; it calls this API with server-side credentials.
 
 ---
@@ -17,7 +19,7 @@ This monorepo is the **engine** (API + worker + schemas + prompts). A separate p
 ## 2. Product model (customer-facing language)
 
 - **Annual hosted archive access:** the creator pays for a **year** of entitlement to the hosted archive, manifests, and related surfaces—not “monthly SaaS tiers.”
-- **Processing allowance:** work is metered in **units that correspond to processing time and complexity** (the engine maps media duration, requested outputs, and model usage into an internal ledger). For customer copy, describe this as **included processing** with the annual plan, plus optional **processing add-ons**—not as abstract “AI credits” or gamified currency.
+- **Processing allowance:** metered in **processing minutes** / **processing hours** (whole minutes on the internal ledger; display helpers may show hours). For customer copy, describe **included processing minutes** with the annual plan, plus optional **processing add-on packs**—not as abstract “AI credits” or gamified currency.
 
 Plans also enforce **limits per job** (e.g. max media minutes, max file size, concurrent jobs); see `ai-routing.yaml` under `plans:`.
 
@@ -25,17 +27,20 @@ Plans also enforce **limits per job** (e.g. max media minutes, max file size, co
 
 ## 3. Internal ledger vs public wording
 
-The codebase and database use **ledger fields** (`reserved_credits`, `estimated_credits`, Stripe env names like `STRIPE_*_CREDITS`) for historical and integration reasons. **Public documentation, marketing, and Base44 UI copy** should use **processing allowance**, **included processing**, and **processing add-ons**—not the word **“credits”** in customer-facing text.
+The codebase and database retain **historical identifiers** (`credit_wallets`, `credit_transactions`, Stripe env names like `STRIPE_*_CREDITS`, YAML `fail_closed_on_missing_credit_reservation`) — values are **processing minutes** in the integrated engine. **Public documentation, marketing, and Base44 UI copy** should use **processing allowance**, **processing minutes** / **processing hours**, and **processing add-ons**—not **“credits”** as the customer-facing model. Where the HTTP path **`/v1/account/credits`** or JSON **`*_credits`** appears, treat it as **deprecated compatibility alias** only (mirror of canonical **`*_processing_minutes`** fields).
 
 ---
 
-## 4. Failed jobs and processing allowance
+## 4. Failed, cancelled, and completed jobs vs processing allowance
 
-Jobs follow a **reserve → settle** pattern on the internal ledger:
+Jobs follow **reserve → settle** on the internal ledger (whole **processing minutes**):
 
-- Before heavy work, the API **reserves** an estimated amount against the organisation’s available balance.
-- On **successful completion**, the worker **debits** the settled amount (up to what was reserved) and **releases** any unused remainder back to available balance (`apps/worker/worker.py`: `_settle_credits`).
-- On **failure**, `fail_job` **releases the full reservation** back to available balance using `ledger_release_failure_key`—so **a failed job does not consume the customer’s processing allowance** (nothing is debited from reserved funds; reserved amount returns to available).
+- Before heavy work, the API **reserves** estimated minutes against **`processing_minutes_available`**.
+- On **successful completion**, the worker **`_settle_processing_allowance`** charges **`actual_processing_minutes_charged`** (up to the reservation) and **releases** any unused remainder via **`ledger_release_remainder_key`**.
+- On **failure**, the worker **releases the full reservation** via **`ledger_release_failure_key`** — **failed jobs do not consume** allowance as completed usage (**`actual_processing_minutes_charged`** stays unset for that outcome).
+- On **cancellation** (`POST /v1/jobs/{job_id}/cancel`), the API releases reserved minutes for eligible states — **cancelled jobs do not consume** completed processing allowance the way **completed** jobs do.
+
+**Invariant:** only **completed** jobs settle **actual processing minutes charged** toward the creator’s allowance. **Failed** and **cancelled** do not.
 
 ---
 
@@ -81,7 +86,7 @@ Authoritative template with comments: **[`.env.example`](../.env.example)** (rep
 | Internal auth | `FF_INTERNAL_API_KEY`, `BASE44_WEBHOOK_SECRET` (when webhooks used) |
 | AI policy file | `AI_ROUTING_CONFIG_PATH` (optional; default path in Docker) |
 | Storage | `STORAGE_PROVIDER`, `R2_*` or `R2_ENDPOINT_URL`, buckets, optional `R2_PUBLIC_BASE_URL`, presign TTLs |
-| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, annual price IDs, plan codes, **internal** included-unit envs, credit-pack price IDs |
+| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, annual price IDs, plan codes, **internal** included-unit envs, processing add-on pack price IDs |
 | Providers | `OPENAI_API_KEY`, model envs; optional `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `GROQ_API_KEY`, local/OSS model envs |
 | AI budgets | `DEV_MONTHLY_AI_BUDGET_USD`, `STAGING_MONTHLY_AI_BUDGET_USD`, `PRODUCTION_MONTHLY_AI_BUDGET_USD`, throttle/stop percents |
 | Worker | `WORKER_POLL_INTERVAL_SECONDS`, `FF_WORKER_ID`, `MAX_CONCURRENT_JOBS_PER_WORKER`, `FFMPEG_BINARY`, `FFPROBE_BINARY`, `FF_SKIP_SOURCE_VERIFY` |
@@ -158,12 +163,11 @@ Docker: `docker build -f apps/worker/Dockerfile -t feedfoundry-worker .`
 ## 11. How to run tests
 
 ```bash
-source .venv/bin/activate
-cd apps/api && PYTHONPATH=. pytest tests/ -q && cd ..
-cd apps/worker && PYTHONPATH=../api:. pytest tests/ -q && cd ../..
+cd apps/api && source .venv/bin/activate && python -m pytest -q
+cd ../worker && PYTHONPATH=../api:. python -m pytest -q
 ```
 
-Optional lint: `cd apps/web && npm run lint && npm run typecheck`; API/worker: `ruff check apps/api/app apps/worker` if `ruff` is installed.
+Web: `cd apps/web && npm run lint`, `npm run typecheck`, `npm run build`. Optional API/worker lint: `ruff check apps/api/app apps/worker` if `ruff` is installed.
 
 ---
 

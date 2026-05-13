@@ -29,7 +29,7 @@ From **repository root**:
 cd apps/web
 npm install
 cp .env.example .env.local
-# Edit .env.local — set FEEDFOUNDRY_INTERNAL_API_KEY to match Railway api-v2
+# Edit .env.local — set FEEDFOUNDRY_INTERNAL_API_KEY to match Railway API service **api-v2-IQho** (FF_INTERNAL_API_KEY)
 npm run dev
 ```
 
