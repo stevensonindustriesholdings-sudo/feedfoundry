@@ -58,8 +58,8 @@ def test_claim_next_job_moves_queued_to_probing(sqlite_engine):
                 organisation_id=org_id,
                 media_asset_id=ma_id,
                 status=JobStatus.QUEUED,
-                reserved_credits=10,
-                estimated_credits=10,
+                reserved_processing_minutes=10,
+                estimated_processing_minutes=10,
                 requested_outputs_json=["transcript"],
             )
         )

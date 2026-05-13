@@ -8,7 +8,9 @@ def test_jobs_missing_bearer_returns_401(api_client):
         json={"media_asset_id": "ma_x", "requested_outputs": ["transcript"]},
     )
     assert r.status_code == 401
-    assert r.json()["detail"] == "Invalid or missing credentials"
+    body = r.json()
+    assert body["code"] == "unauthorized"
+    assert "credentials" in body["message"].lower()
 
 
 def test_jobs_wrong_bearer_returns_401(api_client):
@@ -21,7 +23,9 @@ def test_jobs_wrong_bearer_returns_401(api_client):
         json={"media_asset_id": "ma_x", "requested_outputs": ["transcript"]},
     )
     assert r.status_code == 401
-    assert r.json()["detail"] == "Invalid or missing credentials"
+    body = r.json()
+    assert body["code"] == "unauthorized"
+    assert "credentials" in body["message"].lower()
 
 
 def test_jobs_missing_org_header_returns_400(api_client):
@@ -31,7 +35,9 @@ def test_jobs_missing_org_header_returns_400(api_client):
         json={"media_asset_id": "ma_x", "requested_outputs": ["transcript"]},
     )
     assert r.status_code == 400
-    assert r.json()["detail"] == "X-Org-Id or X-FF-Organisation-Id required"
+    body = r.json()
+    assert body["code"] == "organisation_required"
+    assert "X-Org-Id" in body["message"] or "organisation" in body["message"].lower()
 
 
 def test_presign_accepts_legacy_internal_header(api_client, db_session):
@@ -50,10 +56,10 @@ def test_presign_accepts_legacy_internal_header(api_client, db_session):
             period_start=now,
             period_end=now + timedelta(days=365),
             hosting_until=now + timedelta(days=365),
-            included_credits=100,
+            included_processing_minutes_annual=100,
         )
     )
-    db_session.add(CreditWallet(organisation_id=org_id, balance_available=200))
+    db_session.add(CreditWallet(organisation_id=org_id, processing_minutes_available=200))
     db_session.commit()
 
     r = api_client.post(

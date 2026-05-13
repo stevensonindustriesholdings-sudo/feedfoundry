@@ -19,7 +19,7 @@ from app.models import (
 )
 
 
-def _bootstrap_org(session: Session, org_id: str, *, credits: int = 500):
+def _bootstrap_org(session: Session, org_id: str, *, processing_minutes: int = 500):
     session.add(Organisation(id=org_id, name="Test Org", slug=f"slug-{org_id}"))
     session.add(User(id=f"user_{org_id}", organisation_id=org_id, email=f"{org_id}@example.com"))
     now = utcnow()
@@ -30,16 +30,16 @@ def _bootstrap_org(session: Session, org_id: str, *, credits: int = 500):
             period_start=now,
             period_end=now + timedelta(days=365),
             hosting_until=now + timedelta(days=365),
-            included_credits=credits,
+            included_processing_minutes_annual=processing_minutes,
         )
     )
-    session.add(CreditWallet(organisation_id=org_id, balance_available=credits))
+    session.add(CreditWallet(organisation_id=org_id, processing_minutes_available=processing_minutes))
     session.commit()
 
 
 def test_presign_then_job_then_get_job(api_client, db_session: Session):
     org_id = "org_upload_flow"
-    _bootstrap_org(db_session, org_id, credits=500)
+    _bootstrap_org(db_session, org_id, processing_minutes=500)
 
     pr = api_client.post(
         "/v1/uploads/presign",
@@ -78,7 +78,7 @@ def test_presign_then_job_then_get_job(api_client, db_session: Session):
     job_body = jr.json()
     job_id = job_body["job_id"]
     assert job_body["status"] == JobStatus.QUEUED.value
-    assert job_body["reserved_credits"] == job_body["estimated_credits"]
+    assert job_body["reserved_processing_minutes"] == job_body["estimated_processing_minutes"]
 
     gr = api_client.get(
         f"/v1/jobs/{job_id}",
@@ -92,7 +92,7 @@ def test_presign_then_job_then_get_job(api_client, db_session: Session):
     assert gr.json()["job_id"] == job_id
 
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org_id)).one()
-    assert wallet.balance_reserved >= job_body["reserved_credits"]
+    assert wallet.processing_minutes_reserved >= job_body["reserved_processing_minutes"]
 
 
 def test_presign_rejects_without_annual_access(api_client, db_session: Session):
@@ -100,7 +100,7 @@ def test_presign_rejects_without_annual_access(api_client, db_session: Session):
     session = db_session
     session.add(Organisation(id=org_id, name="No AA", slug="no-aa-slug"))
     session.add(User(id="user_naa", organisation_id=org_id, email="naa@example.com"))
-    session.add(CreditWallet(organisation_id=org_id, balance_available=50))
+    session.add(CreditWallet(organisation_id=org_id, processing_minutes_available=50))
     session.commit()
 
     pr = api_client.post(
@@ -117,4 +117,4 @@ def test_presign_rejects_without_annual_access(api_client, db_session: Session):
         },
     )
     assert pr.status_code == 403
-    assert pr.json()["detail"] == "annual_access_required"
+    assert pr.json()["code"] == "annual_access_required"
