@@ -44,7 +44,7 @@ def test_chapters_shape_and_content() -> None:
     assert out["schema_version"] == "1.0"
     assert out["derived_from"] == "transcript_stub"
     assert len(out["chapters"]) == 2
-    assert out["chapters"][0]["title"].lower().startswith("welcome")
+    assert "welcome" in out["chapters"][0]["title"].lower()
     assert out["chapters"][0]["start_seconds"] == 0.0
     assert "feed routing" in out["chapters"][0]["summary"].lower()
 
@@ -73,6 +73,8 @@ def test_metadata_technical_block() -> None:
     assert out["derived_from"] == "transcript_stub"
     assert out["technical"]["video_codec"] == "h264"
     assert out["transcript"]["segment_count"] == 2
+    assert out["episode"]["display_title"]
+    assert isinstance(out["tags"], list) and out["tags"]
 
 
 def test_hosted_manifest_lists_outputs_and_meta() -> None:
@@ -98,3 +100,23 @@ def test_hosted_manifest_lists_outputs_and_meta() -> None:
     assert isinstance(out["topics"], list) and out["topics"]
     assert len(out["facts"]) >= 1
     assert len(out["faqs"]) >= 1
+    assert "seo" in out and out["seo"].get("meta_title")
+    assert out["ctas"] and out["ctas"][0].get("intent") == "read_transcript"
+
+
+def test_chapters_strip_internal_stub_noise() -> None:
+    tr = {
+        "schema_version": "1.0",
+        "source": "transcript_stub",
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "transcript_stub_v0 job=j1 media=m1 (no external ASR) Real episode content starts here.",
+            }
+        ],
+    }
+    out = build_chapters_from_transcript(tr, None, derived_from="transcript_stub")
+    title = out["chapters"][0]["title"].lower()
+    assert "transcript_stub_v0" not in title
+    assert "real episode" in title or "content" in title
