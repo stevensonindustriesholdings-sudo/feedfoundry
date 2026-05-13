@@ -20,10 +20,7 @@ def presign_upload(
     session: Session = Depends(get_session),
 ) -> PresignUploadResponse:
     if not annual_access_svc.has_active_processing_entitlement(session, organisation_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="annual_access_required",
-        )
+        raise annual_access_svc.access_inactive_exception()
     try:
         mt = MediaType(body.media_type)
     except ValueError:

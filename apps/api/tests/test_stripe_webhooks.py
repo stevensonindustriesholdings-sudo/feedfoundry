@@ -178,3 +178,25 @@ def test_full_route_valid_checkout(api_client: TestClient, sqlite_engine, stripe
         assert body.get("outcome") == "processed"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_mvp_annual_access_price_grants_wallet_and_access(db_session: Session, monkeypatch):
+    monkeypatch.setenv("STRIPE_ANNUAL_ACCESS_PRICE_ID", "price_mvp_annual_only")
+    monkeypatch.setenv("STRIPE_ANNUAL_ACCESS_INCLUDED_MINUTES", "300")
+    get_settings.cache_clear()
+    org = Organisation(id="org_mvp_stripe", name="M", slug="mvpst")
+    db_session.add(org)
+    db_session.add(CreditWallet(organisation_id=org.id, balance_available=0))
+    db_session.commit()
+    try:
+        ev = _checkout_event(event_id="evt_mvp_1", org_id=org.id, price_id="price_mvp_annual_only")
+        settings = get_settings()
+        billing.handle_checkout_session_completed(db_session, ev, settings=settings)
+        db_session.commit()
+        aa = db_session.exec(select(AnnualAccess).where(AnnualAccess.organisation_id == org.id)).first()
+        assert aa is not None
+        assert aa.plan_code == "annual_access"
+        wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org.id)).one()
+        assert wallet.balance_available == 300
+    finally:
+        get_settings.cache_clear()

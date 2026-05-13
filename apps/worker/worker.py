@@ -420,7 +420,11 @@ def process_job(session: Session, job: Job) -> None:
             )
             transcript_payload = run_transcript_pipeline_v0(
                 t_in,
-                openai_api_key=getattr(settings, "openai_api_key", "") or "",
+                openai_api_key=(
+                    (getattr(settings, "openai_api_key", "") or "").strip()
+                    if bool(getattr(settings, "ff_ai_enabled", True))
+                    else ""
+                ),
             )
         except Exception as exc:
             if skip_verify:

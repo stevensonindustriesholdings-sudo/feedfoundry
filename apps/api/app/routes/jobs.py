@@ -22,10 +22,7 @@ def create_job(
     session: Session = Depends(get_session),
 ) -> CreateJobResponse:
     if not annual_access_svc.has_active_processing_entitlement(session, organisation_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="annual_access_required",
-        )
+        raise annual_access_svc.access_inactive_exception()
 
     ma = session.get(MediaAsset, body.media_asset_id)
     if not ma or ma.organisation_id != organisation_id:
@@ -38,6 +35,21 @@ def create_job(
         )
 
     settings = get_settings()
+    max_sec = int(settings.ff_max_media_seconds)
+    if ma.duration_seconds is not None and float(ma.duration_seconds) > float(max_sec):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "MEDIA_DURATION_TOO_LONG",
+                "message": (
+                    f"This file is longer than the maximum allowed ({max_sec} seconds). "
+                    "Please trim or split the media before uploading."
+                ),
+                "duration_seconds": float(ma.duration_seconds),
+                "max_seconds": max_sec,
+            },
+        )
+
     est = estimate_job_processing_minutes(
         routing_path=settings.ai_routing_config_path,
         requested_outputs=body.requested_outputs,
@@ -86,7 +98,10 @@ def create_job(
 
     warn = outcome.goodwill_minutes > 0
     msg = (
-        f"We covered {outcome.goodwill_minutes} extra minutes for this upload."
+        (
+            f"You are a little short on processing time. We will cover the extra "
+            f"{outcome.goodwill_minutes} minutes this time so your file can be processed."
+        )
         if warn
         else None
     )

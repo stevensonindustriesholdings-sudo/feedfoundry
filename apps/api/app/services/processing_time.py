@@ -152,8 +152,8 @@ def reserve_processing_time_for_job(
 
     return ProcessingReservationBlocked(
         message=(
-            f"This upload needs {est} processing minutes but only {available} remain "
-            f"({shortfall} short)."
+            f"This file needs about {est} minutes of processing time, but you only have "
+            f"{available} minutes remaining. Please top up before starting this job."
         ),
         available_minutes=available,
         estimated_minutes=est,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from fastapi import HTTPException, status
 from sqlalchemy import desc
 from sqlmodel import Session, select
 
@@ -27,6 +28,17 @@ def has_active_processing_entitlement(session: Session, organisation_id: str) ->
         .order_by(desc(AnnualAccess.period_end))
     )
     return session.exec(stmt).first() is not None
+
+
+def access_inactive_exception() -> HTTPException:
+    """Customer-facing annual access gate (see docs/MVP_PARALLEL_CONTRACT.md)."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": "ACCESS_INACTIVE",
+            "message": "Annual access is required to upload and process media.",
+        },
+    )
 
 
 def get_latest_annual_access(

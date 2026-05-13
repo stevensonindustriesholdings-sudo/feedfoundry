@@ -356,7 +356,7 @@ export default function UploadPage() {
               <p className="font-semibold text-zinc-100">Job queued</p>
               <p className="mt-2 font-mono text-sm text-zinc-300">{job.job_id}</p>
               <p className="mt-2 text-sm text-zinc-400">
-                Estimated minutes {job.estimated_minutes} · Reserved {job.reserved_credits}
+                Estimated minutes {job.estimated_minutes} · Reserved minutes {job.reserved_credits}
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Link href="/jobs" className="text-sm font-semibold text-accent no-underline hover:underline">

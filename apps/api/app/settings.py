@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_name: str = "feedfoundry"
     public_api_base_url: str = "http://localhost:8000"
+    # Used for Stripe Checkout success/cancel URLs (falls back to public_api_base_url).
+    app_base_url: str = ""
 
     database_url: str = "postgresql+psycopg://user:password@localhost:5432/feedfoundry"
 
@@ -77,6 +79,25 @@ class Settings(BaseSettings):
     # Processing-time goodwill (wallet units = processing minutes)
     ff_goodwill_max_shortfall_minutes: int = 5
     ff_goodwill_max_minutes_per_account_per_year: int = 30
+    ff_max_media_seconds: int = 7200
+
+    # AI / worker caps (API documents; worker reads same names)
+    ff_ai_enabled: bool = True
+    ff_default_model: str = "gpt-4.1-mini"
+    ff_model_factsheet: str = ""
+    ff_model_faq: str = ""
+    ff_model_chapters: str = ""
+    ff_model_metadata: str = ""
+    ff_model_cta: str = ""
+    ff_max_tokens_per_job: int = 120_000
+    ff_max_cost_per_job_gbp: float = 2.0
+    ff_retry_max: int = 2
+
+    # MVP Stripe Checkout price IDs (single annual + single processing top-up)
+    stripe_annual_access_price_id: str = ""
+    stripe_processing_time_price_id: str = ""
+    stripe_annual_access_included_minutes: int = 300
+    stripe_processing_time_pack_minutes: int = 600
 
 
 @lru_cache

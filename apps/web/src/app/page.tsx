@@ -15,7 +15,7 @@ export default function HomePage() {
           FeedFoundry turns video and audio into structured outputs—transcripts, chapters, show notes, metadata, CTAs,
           fact sheets, FAQs, and hosted manifests. You keep a <strong className="font-medium text-zinc-200">creator archive</strong>{" "}
           with <strong className="font-medium text-zinc-200">annual hosted archive</strong> access and{" "}
-          <strong className="font-medium text-zinc-200">processing credits</strong> per job.
+          <strong className="font-medium text-zinc-200">processing time</strong> per job.
         </p>
         <div className="relative flex flex-wrap gap-3">
           <Link
@@ -46,8 +46,8 @@ export default function HomePage() {
             body: "A stable home for processed outputs and public manifests—priced as archive access, not as a generic app seat.",
           },
           {
-            title: "Processing credits",
-            body: "Each job reserves credits up front. Larger files and richer output bundles may use more credits; you buy packs when you need capacity.",
+            title: "Processing time",
+            body: "Each job reserves processing minutes up front. Larger files and richer output bundles may use more time; you can top up when you need capacity.",
           },
           {
             title: "Creator archive",
@@ -69,7 +69,7 @@ export default function HomePage() {
         <ol className="mt-6 grid gap-8 md:grid-cols-3 md:gap-6">
           {[
             { step: "01", title: "Upload", desc: "Send media securely; choose which outputs you want generated." },
-            { step: "02", title: "Track", desc: "Follow jobs and credit use from the dashboard through completion." },
+            { step: "02", title: "Track", desc: "Follow jobs and processing time from the dashboard through completion." },
             { step: "03", title: "Publish", desc: "Download deliverables and expose your public creator archive manifest." },
           ].map((s) => (
             <li key={s.step} className="relative pl-14 md:pl-0 md:pt-12">

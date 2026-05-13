@@ -5,11 +5,11 @@ export default function PricingPage() {
     <div className="space-y-12 md:space-y-16">
       <header className="max-w-2xl space-y-4">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Pricing</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Archive access and credits</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Archive access and processing time</h1>
         <p className="text-base leading-relaxed text-zinc-400">
           Your <strong className="font-medium text-zinc-300">annual hosted archive</strong> covers where outputs live.
-          <strong className="font-medium text-zinc-300"> Processing credits</strong> power each job—buy packs when you
-          need more throughput. Checkout from this app will connect here when billing is enabled.
+          <strong className="font-medium text-zinc-300"> Processing time</strong> (minutes per job) powers each run—top
+          up when you need more capacity. Checkout from this app will connect here when billing is enabled.
         </p>
       </header>
 
@@ -57,16 +57,16 @@ export default function PricingPage() {
       </section>
 
       <section className="space-y-6">
-        <h2 className="text-xl font-semibold text-zinc-100">Processing credit packs</h2>
+        <h2 className="text-xl font-semibold text-zinc-100">Processing time top-ups</h2>
         <p className="max-w-2xl text-sm text-zinc-500">
-          Credits are reserved when a job is created and reconciled as work completes. Add packs alongside your archive
-          plan when you batch-ingest seasons or back-catalog work.
+          Processing minutes are reserved when a job is created and reconciled when work completes. Add top-ups
+          alongside your archive plan when you batch-ingest seasons or back-catalog work.
         </p>
         <div className="grid gap-5 md:grid-cols-3">
           {[
-            { name: "Starter pack", hint: "Light batches, pilots, and single shows.", credits: "— credits" },
-            { name: "Growth pack", hint: "Season drops and steady publishing.", credits: "— credits", featured: true },
-            { name: "Studio pack", hint: "Libraries, networks, and high volume.", credits: "— credits" },
+            { name: "Starter", hint: "Light batches, pilots, and single shows.", minutes: "— minutes" },
+            { name: "Growth", hint: "Season drops and steady publishing.", minutes: "— minutes", featured: true },
+            { name: "Studio", hint: "Libraries, networks, and high volume.", minutes: "— minutes" },
           ].map((pack) => (
             <article
               key={pack.name}
@@ -81,7 +81,7 @@ export default function PricingPage() {
               ) : null}
               <h3 className={`font-semibold text-zinc-100 ${pack.featured ? "mt-2" : ""}`}>{pack.name}</h3>
               <p className="mt-2 text-sm text-zinc-500">{pack.hint}</p>
-              <p className="mt-6 font-mono text-xl text-zinc-200">{pack.credits}</p>
+              <p className="mt-6 font-mono text-xl text-zinc-200">{pack.minutes}</p>
               <p className="mt-1 text-xs text-zinc-600">Checkout wiring from this app is planned.</p>
             </article>
           ))}

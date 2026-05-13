@@ -47,11 +47,13 @@ function formatProcessingMinutes(totalMinutes: number): string {
 }
 
 /**
- * Dashboard-only copy for GET /v1/account/credits. Order matters: entitlement/auth before generic 5xx.
+ * Dashboard-only copy for account processing time (GET via server proxy). Order matters: entitlement/auth before generic 5xx.
  * "Backend unavailable" only when code is network_unreachable (true fetch / proxy upstream failure).
  */
 function creditsErrorPresentation(err: ClientError): { title: string; body: string } {
-  const d = (err.detail || "").toLowerCase();
+  const d = (
+    typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail ?? "")
+  ).toLowerCase();
 
   if (err.status === 401 || err.code === "unauthorized") {
     return {
@@ -67,11 +69,21 @@ function creditsErrorPresentation(err: ClientError): { title: string; body: stri
     };
   }
 
-  if (
-    err.code === "annual_access_required" ||
-    (err.status === 403 && d.includes("annual_access")) ||
-    (err.status === 404 && d.includes("annual_access_required"))
-  ) {
+  if (err.status === 404 && d.includes("annual_access_required")) {
+    return {
+      title: "Annual archive access required",
+      body: "This organisation needs annual archive access before uploads or processing jobs can run.",
+    };
+  }
+
+  if (err.code === "annual_access_required") {
+    return {
+      title: "Annual archive access required",
+      body: "This organisation needs annual archive access before uploads or processing jobs can run.",
+    };
+  }
+
+  if (err.status === 403 && (d.includes("access_inactive") || d.includes("annual_access"))) {
     return {
       title: "Annual archive access required",
       body: "This organisation needs annual archive access before uploads or processing jobs can run.",
@@ -300,7 +312,7 @@ export default function DashboardPage() {
 
       {diagnostics ? (
         <DebugPanel
-          title="Account processing time (GET /v1/account/credits via proxy)"
+          title="Account processing time (via server proxy)"
           json={{
             orgId: diagnostics.localOrgId,
             effectiveOrgHeader:

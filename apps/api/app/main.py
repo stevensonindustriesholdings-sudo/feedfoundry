@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.config.env_validation import validate_startup_bootstrap
 from app.routes import (
     admin,
+    billing,
     credits,
     health,
     jobs,
@@ -34,4 +35,5 @@ app.include_router(outputs.router, prefix="/v1")
 app.include_router(credits.router, prefix="/v1")
 app.include_router(manifests.router, prefix="/v1")
 app.include_router(stripe_webhooks.router, prefix="/v1")
+app.include_router(billing.router, prefix="/v1")
 app.include_router(admin.router, prefix="/v1")

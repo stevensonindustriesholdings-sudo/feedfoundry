@@ -166,6 +166,22 @@ def _credit_pack_credits(price_id: str, settings: Settings) -> Optional[int]:
     return None
 
 
+def _mvp_checkout_plan(price_id: str, settings: Settings) -> Optional[tuple[str, str, int]]:
+    """MVP single-price annual access or processing-time top-up (minutes on wallet).
+
+    Returns ``(kind, plan_code, minutes)`` where ``kind`` is ``annual`` or ``topup``.
+    ``plan_code`` is only used for annual rows (``annual_access`` for the unified SKU).
+    """
+    pid = (price_id or "").strip()
+    ap = (settings.stripe_annual_access_price_id or "").strip()
+    if ap and pid == ap:
+        return ("annual", "annual_access", int(settings.stripe_annual_access_included_minutes))
+    tp = (settings.stripe_processing_time_price_id or "").strip()
+    if tp and pid == tp:
+        return ("topup", "", int(settings.stripe_processing_time_pack_minutes))
+    return None
+
+
 def _sync_org_customer(session: Session, org_id: str, customer_id: Optional[str]) -> None:
     if not customer_id:
         return
@@ -266,10 +282,11 @@ def handle_checkout_session_completed(
     matched_known_price = False
 
     for price_id in price_ids:
+        mvp = _mvp_checkout_plan(price_id, settings)
         annual = _annual_plan_for_price(price_id, settings)
         credits_pack = _credit_pack_credits(price_id, settings)
 
-        if annual is None and credits_pack is None:
+        if mvp is None and annual is None and credits_pack is None:
             log.info("stripe_unknown_price_id price_id=%s event_id=%s", price_id, event_id)
             continue
 
@@ -286,7 +303,30 @@ def handle_checkout_session_completed(
 
         _sync_org_customer(session, org_id, str(customer_id) if customer_id else None)
 
-        if annual:
+        if mvp:
+            kind, plan_code, minutes = mvp
+            if kind == "annual":
+                _extend_or_create_annual_access(
+                    session,
+                    organisation_id=org_id,
+                    plan_code=plan_code,
+                    included_credits=minutes,
+                    checkout_session_id=checkout_session_id,
+                    payment_intent_id=payment_intent_id,
+                    stripe_event_id=event_id,
+                    settings=settings,
+                )
+            else:
+                purchase_credits_from_stripe(
+                    session,
+                    organisation_id=org_id,
+                    credits=minutes,
+                    idempotency_key=f"stripe:event:{event_id}:processing_topup:{price_id}",
+                    stripe_reference=payment_intent_id or checkout_session_id,
+                    memo="processing_time_topup",
+                )
+            outcome = "processed"
+        elif annual:
             plan_code, included = annual
             _extend_or_create_annual_access(
                 session,

@@ -18,6 +18,7 @@ from app.models import (
     User,
     utcnow,
 )
+from app.settings import get_settings
 
 
 def _bootstrap_org(session: Session, org_id: str, *, with_aa: bool = True, credits: int = 500):
@@ -54,7 +55,9 @@ def test_missing_annual_access_blocks_job(api_client, db_session: Session):
         },
     )
     assert r.status_code == 403
-    assert r.json()["detail"] == "annual_access_required"
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail.get("error") == "ACCESS_INACTIVE"
 
 
 def test_insufficient_credits_blocks_job(api_client, db_session: Session):
@@ -186,3 +189,36 @@ def test_manifest_endpoint_returns_payload(api_client, db_session: Session):
     data = r.json()
     assert data["canonical_title"] == "T"
     assert "output_links" in data
+
+
+def test_media_duration_exceeds_max_blocks_job(api_client, db_session: Session, monkeypatch):
+    monkeypatch.setenv("FF_MAX_MEDIA_SECONDS", "100")
+    get_settings.cache_clear()
+    try:
+        _bootstrap_org(db_session, "org_long_media", credits=500)
+        db_session.add(
+            MediaAsset(
+                organisation_id="org_long_media",
+                original_filename="long.mp4",
+                media_type=MediaType.VIDEO,
+                storage_source_key="orgs/org_long_media/assets/ma_long/source/long.mp4",
+                status=MediaAssetStatus.UPLOADED,
+                duration_seconds=500.0,
+            )
+        )
+        db_session.commit()
+        ma = db_session.exec(select(MediaAsset).where(MediaAsset.organisation_id == "org_long_media")).first()
+        r = api_client.post(
+            "/v1/jobs",
+            headers={
+                "Authorization": "Bearer test-internal-key",
+                "X-Org-Id": "org_long_media",
+            },
+            json={"media_asset_id": ma.id, "requested_outputs": ["transcript"]},
+        )
+        assert r.status_code == 400
+        detail = r.json()["detail"]
+        assert isinstance(detail, dict)
+        assert detail.get("error") == "MEDIA_DURATION_TOO_LONG"
+    finally:
+        get_settings.cache_clear()

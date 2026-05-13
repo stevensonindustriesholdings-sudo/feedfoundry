@@ -18,21 +18,31 @@ export type ClientError = {
   code: ClientErrorCode;
   status: number;
   message: string;
-  detail?: string;
+  detail?: string | unknown;
 };
+
+function stringifyDetail(detail: string | undefined | unknown): string {
+  if (detail == null) return "";
+  if (typeof detail === "string") return detail;
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return String(detail);
+  }
+}
 
 /**
  * Maps HTTP responses from `/api/ff/*` (proxy) or upstream-shaped JSON to stable client codes.
  * Avoid vague "backend unavailable" for HTTP errors — reserve that for real transport failures.
  */
-export function mapUpstreamError(status: number, detail: string | undefined): ClientError {
-  const d = (detail || "").toLowerCase();
+export function mapUpstreamError(status: number, detail: string | undefined | unknown): ClientError {
+  const d = stringifyDetail(detail).toLowerCase();
 
   if (status === 401) {
     return { code: "unauthorized", status, message: "Upstream returned 401 (invalid or missing internal API key).", detail };
   }
 
-  if (status === 403 && d.includes("annual_access")) {
+  if (status === 403 && (d.includes("access_inactive") || d.includes("annual_access_required"))) {
     return {
       code: "annual_access_required",
       status,
@@ -66,16 +76,10 @@ export function mapUpstreamError(status: number, detail: string | undefined): Cl
     };
   }
 
-  if (status === 400 && d.includes("insufficient_credits")) {
-    return {
-      code: "insufficient_credits",
-      status,
-      message: "Upstream returned 400 (insufficient processing credits).",
-      detail,
-    };
-  }
-
-  if (status === 400 && d.includes("insufficient_processing_time")) {
+  if (
+    status === 400 &&
+    (d.includes("insufficient_processing_time") || d.includes("insufficient_credits"))
+  ) {
     return {
       code: "insufficient_processing_time",
       status,
