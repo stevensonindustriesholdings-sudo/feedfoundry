@@ -80,6 +80,7 @@ class JobSummaryItem(BaseModel):
 
 class JobListResponse(BaseModel):
     jobs: List[JobSummaryItem]
+    total: int = 0
 
 
 class OutputItemResponse(BaseModel):
@@ -92,6 +93,21 @@ class OutputItemResponse(BaseModel):
 class JobOutputsResponse(BaseModel):
     job_id: str
     outputs: List[OutputItemResponse]
+
+
+class OutputCatalogEntryResponse(BaseModel):
+    """One doctrine output slot for a specific job; ``ready`` reflects a persisted row."""
+
+    output_type: str
+    title: str
+    ready: bool
+    format: Optional[str] = None
+    download_url: Optional[str] = None
+
+
+class JobOutputsCatalogResponse(BaseModel):
+    job_id: str
+    outputs: List[OutputCatalogEntryResponse]
 
 
 class AccountProcessingBalanceResponse(BaseModel):

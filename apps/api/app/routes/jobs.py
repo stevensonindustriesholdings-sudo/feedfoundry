@@ -11,8 +11,10 @@ marked deprecated in OpenAPI.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy import desc
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import desc, func
 from sqlmodel import Session, select
 
 from app.auth import require_organisation_id, verify_internal_key
@@ -44,14 +46,30 @@ def list_jobs(
     _: None = Depends(verify_internal_key),
     organisation_id: str = Depends(require_organisation_id),
     session: Session = Depends(get_session),
-    limit: int = 25,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ) -> JobListResponse:
-    lim = max(1, min(limit, 100))
+    """Poll-friendly job list for the organisation (newest first)."""
+    filters: list = [Job.organisation_id == organisation_id]
+    if status_filter:
+        try:
+            st = JobStatus(status_filter)
+        except ValueError:
+            raise problem(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                code="invalid_job_status",
+                message=f"Unknown job status filter: {status_filter!r}.",
+            )
+        filters.append(Job.status == st)
+
+    total = session.exec(select(func.count()).select_from(Job).where(*filters)).one()
     stmt = (
         select(Job)
-        .where(Job.organisation_id == organisation_id)
+        .where(*filters)
         .order_by(desc(Job.created_at))
-        .limit(lim)
+        .offset(offset)
+        .limit(limit)
     )
     rows = session.exec(stmt).all()
     items: list[JobSummaryItem] = []
@@ -66,7 +84,7 @@ def list_jobs(
                 created_at=job.created_at.isoformat() if job.created_at else None,
             )
         )
-    return JobListResponse(jobs=items)
+    return JobListResponse(jobs=items, total=int(total))
 
 
 @router.post("", response_model=CreateJobResponse)
