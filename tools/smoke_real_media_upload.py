@@ -193,6 +193,9 @@ def main() -> int:
     outs = json.loads(obody.decode("utf-8")).get("outputs", [])
     types = [o.get("type") for o in outs]
     print(f"outputs count={len(types)} types={types}")
+    if len(types) != 7:
+        print(f"FAIL: expected 7 outputs, got {len(types)}", file=sys.stderr)
+        return 1
     if "media_inspection" not in types:
         print(
             "FAIL: media_inspection missing (need R2 + visible source + worker ffprobe).",
