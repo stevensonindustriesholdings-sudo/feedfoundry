@@ -65,7 +65,7 @@ def _seed_org_job_reserved(session: Session, *, org_id: str, job_id: str, ma_id:
             id=job_id,
             organisation_id=org_id,
             media_asset_id=ma_id,
-            status=JobStatus.EXPORTING,
+            status=JobStatus.PROCESSING,
             estimated_processing_minutes=reserve_amount,
             reserved_processing_minutes=reserve_amount,
         )

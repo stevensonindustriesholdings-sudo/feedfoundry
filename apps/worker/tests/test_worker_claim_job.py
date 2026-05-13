@@ -1,4 +1,4 @@
-"""Worker job claim advances QUEUED → PROBING (state transition contract)."""
+"""Worker job claim advances QUEUED → PROCESSING (state transition contract)."""
 
 from __future__ import annotations
 
@@ -68,6 +68,6 @@ def test_claim_next_job_moves_queued_to_probing(sqlite_engine):
     with Session(sqlite_engine) as session:
         job = worker_mod.claim_next_job(session)
         assert job is not None
-        assert job.status == JobStatus.PROBING
+        assert job.status == JobStatus.PROCESSING
         assert job.progress_percent == 5
         assert job.current_stage == "Claimed job"
