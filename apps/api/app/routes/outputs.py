@@ -5,11 +5,13 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
+from app.config.env_validation import is_strict_deployment_env
 from app.auth import require_organisation_id, verify_internal_key
 from app.db import get_session
 from app.models import Job, JobOutput
 from app.schemas.api import JobOutputsResponse, OutputItemResponse
 from app.services import storage as storage_service
+from app.settings import get_settings
 
 router = APIRouter(tags=["outputs"])
 
@@ -51,6 +53,16 @@ def list_job_outputs(
     job = session.get(Job, job_id)
     if not job or job.organisation_id != organisation_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found")
+
+    settings = get_settings()
+    if is_strict_deployment_env(settings.app_env) and not storage_service.storage_client_ready(settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "storage_not_configured",
+                "message": "Object storage is not configured; output download URLs cannot be signed.",
+            },
+        )
 
     stmt = select(JobOutput).where(JobOutput.job_id == job_id, JobOutput.organisation_id == organisation_id)
     rows = session.exec(stmt).all()

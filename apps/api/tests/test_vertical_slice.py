@@ -54,7 +54,7 @@ def test_missing_annual_access_blocks_job(api_client, db_session: Session):
         },
     )
     assert r.status_code == 403
-    assert r.json()["detail"] == "annual_access_required"
+    assert r.json()["detail"]["code"] == "annual_archive_access_required"
 
 
 def test_insufficient_credits_blocks_job(api_client, db_session: Session):
@@ -93,7 +93,7 @@ def test_insufficient_credits_blocks_job(api_client, db_session: Session):
         },
     )
     assert r.status_code == 400
-    assert r.json()["detail"] == "insufficient_credits"
+    assert r.json()["detail"]["code"] == "insufficient_processing_allowance"
 
 
 def test_job_creation_reserves_credits(api_client, db_session: Session):
@@ -120,11 +120,11 @@ def test_job_creation_reserves_credits(api_client, db_session: Session):
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["reserved_credits"] == body["estimated_credits"]
+    assert body["reserved_processing_minutes"] == body["estimated_processing_minutes"]
     job_id = body["job_id"]
 
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == "org_ok")).one()
-    assert wallet.balance_reserved >= body["reserved_credits"]
+    assert wallet.balance_reserved >= body["reserved_processing_minutes"]
 
     job = db_session.get(Job, job_id)
     assert job.status == JobStatus.QUEUED

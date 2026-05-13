@@ -32,10 +32,15 @@ class CreateJobRequest(BaseModel):
 
 
 class CreateJobResponse(BaseModel):
+    """Job created; estimated and reserved **processing minutes** (ledger unit)."""
+
     job_id: str
     status: str
-    estimated_credits: int
-    reserved_credits: int
+    estimated_processing_minutes: int
+    reserved_processing_minutes: int
+    estimated_processing_hours: float = Field(
+        description="Rounded hours equivalent of the estimate (display helper).",
+    )
 
 
 class JobStatusResponse(BaseModel):
@@ -43,9 +48,23 @@ class JobStatusResponse(BaseModel):
     status: str
     progress_percent: int
     current_stage: Optional[str]
-    estimated_credits: Optional[int]
-    reserved_credits: Optional[int]
-    actual_credits_so_far: Optional[int] = None
+    estimated_processing_minutes: Optional[int] = None
+    reserved_processing_minutes: Optional[int] = None
+    processing_minutes_consumed_so_far: Optional[int] = None
+    estimated_processing_hours: Optional[float] = None
+
+
+class JobSummaryItem(BaseModel):
+    job_id: str
+    status: str
+    progress_percent: int
+    current_stage: Optional[str] = None
+    media_asset_id: str
+    created_at: Optional[str] = None
+
+
+class JobListResponse(BaseModel):
+    jobs: List[JobSummaryItem]
 
 
 class OutputItemResponse(BaseModel):
@@ -60,10 +79,37 @@ class JobOutputsResponse(BaseModel):
     outputs: List[OutputItemResponse]
 
 
-class AccountCreditsResponse(BaseModel):
-    annual_access_status: str
+class AccountProcessingBalanceResponse(BaseModel):
+    """Annual hosted archive + remaining **processing minutes** (wallet balance)."""
+
+    annual_archive_access_status: str
     hosting_until: Optional[str]
-    credits_available: int
-    credits_reserved: int
-    credits_spent_lifetime: int
-    next_credit_expiry: Optional[str]
+    processing_minutes_available: int
+    processing_minutes_reserved: int
+    processing_minutes_used_lifetime: int
+    processing_period_ends_on: Optional[str]
+    processing_hours_available: float = Field(
+        description="Hours equivalent of available minutes (display helper).",
+    )
+
+
+class CatalogOutputKind(BaseModel):
+    slug: str
+    title: str
+    description: str
+
+
+class OutputCatalogResponse(BaseModel):
+    """
+    Contract for requested job outputs vs persisted ``job_outputs`` rows.
+
+    Worker may not emit every persisted type for every job; clients should list
+    ``GET /v1/jobs/{id}/outputs`` for concrete artifacts.
+    """
+
+    requested_output_kinds: List[CatalogOutputKind]
+    persisted_output_types: List[CatalogOutputKind]
+    notes: str = (
+        "Request slugs (e.g. transcript) map to stored types (e.g. raw_transcript) in the worker; "
+        "see OpenAPI descriptions on POST /v1/jobs."
+    )
