@@ -62,6 +62,8 @@ temp/
 # Sample-pack batch smoke (local artifacts)
 sample-pack-report.md
 sample-pack-report.csv
+sample-pack-report-*.md
+sample-pack-report-*.csv
 
 # Node — FeedFoundry web (Next.js); root `npm install` with workspaces hoists here
 /node_modules/
