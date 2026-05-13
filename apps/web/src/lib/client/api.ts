@@ -1,5 +1,6 @@
-import type { ClientError } from "./errors";
-import { mapUpstreamError } from "./errors";
+import type { ClientError } from "../errors";
+import { mapUpstreamError } from "../errors";
+import { parseUpstreamErrorJson } from "./errors-parse";
 
 const API_PREFIX = "/api/ff";
 
@@ -19,7 +20,8 @@ async function parseJson<T>(res: Response): Promise<{ ok: true; data: T } | { ok
     /* ignore */
   }
   if (!res.ok) {
-    return { ok: false, error: mapUpstreamError(res.status, detail) };
+    const parsed = parseUpstreamErrorJson(text);
+    return { ok: false, error: mapUpstreamError(res.status, detail, parsed) };
   }
   try {
     return { ok: true, data: JSON.parse(text) as T };

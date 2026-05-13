@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { browserGet } from "@/lib/client/api";
 import { getLatestJobId, getOrgId } from "@/lib/org-storage";
-import type { JobOutputsResponse } from "@/lib/types";
+import type { JobOutputsCatalogResponse, JobOutputsResponse } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 
 const OUTPUT_GUIDE: Record<string, string> = {
@@ -24,6 +24,7 @@ const OUTPUT_GUIDE: Record<string, string> = {
 export default function OutputsPage() {
   const [jobId, setJobId] = useState("");
   const [data, setData] = useState<JobOutputsResponse | null>(null);
+  const [catalog, setCatalog] = useState<JobOutputsCatalogResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,12 +34,20 @@ export default function OutputsPage() {
   const load = async () => {
     if (!jobId.trim()) return;
     setErr(null);
-    const r = await browserGet<JobOutputsResponse>(
-      `/v1/jobs/${encodeURIComponent(jobId.trim())}/outputs`,
-      getOrgId(),
-    );
-    if (r.ok) setData(r.data);
-    else setErr(r.error.message);
+    const id = encodeURIComponent(jobId.trim());
+    const [r, c] = await Promise.all([
+      browserGet<JobOutputsResponse>(`/v1/jobs/${id}/outputs`, getOrgId()),
+      browserGet<JobOutputsCatalogResponse>(`/v1/jobs/${id}/outputs/catalog`, getOrgId()),
+    ]);
+    if (!r.ok) {
+      setData(null);
+      setCatalog(null);
+      setErr(r.error.message);
+      return;
+    }
+    setData(r.data);
+    if (c.ok) setCatalog(c.data);
+    else setCatalog(null);
   };
 
   return (
@@ -49,8 +58,9 @@ export default function OutputsPage() {
         <p className="text-sm leading-relaxed text-zinc-400">
           Signed URLs for each artefact from the pipeline — transcripts, chapters, fact sheets, FAQs, metadata, CTAs,
           hosted manifest JSON, and export bundles. These files are structured for both humans and downstream tools
-          (search, CMS, fine-tuning datasets). Data loads from{" "}
-          <span className="font-mono text-zinc-500">GET /v1/jobs/{"{id}"}/outputs</span>.
+          (search, CMS, fine-tuning datasets). Concrete files:{" "}
+          <span className="font-mono text-zinc-500">GET /v1/jobs/{"{id}"}/outputs</span>. Readiness grid:{" "}
+          <span className="font-mono text-zinc-500">GET /v1/jobs/{"{id}"}/outputs/catalog</span>.
         </p>
       </header>
 
@@ -77,6 +87,22 @@ export default function OutputsPage() {
         </Link>
       </div>
       {err ? <p className="text-sm text-danger">{err}</p> : null}
+      {catalog && catalog.outputs.length > 0 ? (
+        <div className="rounded-xl border border-surface-border bg-surface-raised/30 p-4">
+          <h2 className="text-sm font-semibold text-zinc-200">Output readiness</h2>
+          <ul className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            {catalog.outputs.map((o) => (
+              <li
+                key={o.output_type}
+                className="flex items-center justify-between rounded-md border border-surface-border/60 bg-surface/40 px-3 py-2"
+              >
+                <span className="text-zinc-200">{o.title}</span>
+                <span className={o.ready ? "text-accent" : "text-zinc-500"}>{o.ready ? "Ready" : "Pending"}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {data && data.outputs.length === 0 ? (
         <p className="rounded-lg border border-warn/30 bg-warn/10 px-4 py-3 text-sm text-amber-100">
           Outputs are not ready yet — wait for the job to complete on the Processing page, then retry.
@@ -112,7 +138,10 @@ export default function OutputsPage() {
           ))}
         </ul>
       ) : null}
-      <DebugPanel title="GET /v1/jobs/{id}/outputs" json={data} />
+      <DebugPanel
+        title="GET /v1/jobs/{id}/outputs + /outputs/catalog"
+        json={{ outputs: data, catalog }}
+      />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { browserGet, browserPost } from "@/lib/client/api";
 import { getOrgId } from "@/lib/org-storage";
-import type { AccountCreditsResponse, HealthResponse, PresignUploadResponse, ReadyResponse } from "@/lib/types";
+import type { AccountProcessingBalanceResponse, HealthResponse, PresignUploadResponse, ReadyResponse } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 
 type StepLog = { name: string; ok: boolean; detail: string };
@@ -37,13 +37,14 @@ export function SmokePathCard() {
     setBusy(false);
   };
 
-  const runCredits = async () => {
+  const runAccount = async () => {
     setBusy(true);
-    const r = await browserGet<AccountCreditsResponse>("/v1/account/credits", getOrgId());
+    const r = await browserGet<AccountProcessingBalanceResponse>("/v1/account", getOrgId());
     if (r.ok) {
-      pushLog("GET /v1/account/credits", true, `available_units=${r.data.credits_available} (UI maps to processing time)`);
+      const m = r.data.processing_minutes_available ?? r.data.credits_available ?? 0;
+      pushLog("GET /v1/account", true, `processing_minutes_available=${m}`);
       setLastPayload(r.data);
-    } else pushLog("GET /v1/account/credits", false, r.error.message);
+    } else pushLog("GET /v1/account", false, r.error.message);
     setBusy(false);
   };
 
@@ -98,7 +99,7 @@ export function SmokePathCard() {
         <button
           type="button"
           disabled={busy}
-          onClick={() => void runCredits()}
+          onClick={() => void runAccount()}
           className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-zinc-200 hover:bg-surface-border/40 disabled:opacity-50"
         >
           account / allowance

@@ -1,14 +1,23 @@
 /**
  * Customer-facing copy uses **processing minutes / hours**, not the word "credits".
  *
- * Upstream responses still use `credits_*` / `*_credits` field names (OpenAPI).
- * TODO(api-contract): Have GET `/v1/account/credits` and job payloads expose explicit
- * `processing_seconds_remaining` (or similar) and remove this mapping assumption.
+ * GET `/v1/account` exposes `processing_minutes_*` fields. Job payloads expose
+ * `estimated_processing_minutes` (legacy `*_credits` aliases may still appear).
+ * Numeric API units are treated as whole minutes for display rounding.
  */
 export const ASSUMED_PROCESSING_MINUTES_PER_API_UNIT = 1;
 
 export function processingMinutesFromApiUnits(units: number): number {
   return Math.max(0, Math.round(units * ASSUMED_PROCESSING_MINUTES_PER_API_UNIT));
+}
+
+/** Prefer canonical processing-minutes fields; fall back to deprecated credit-named aliases. */
+export function jobEstimateMinutes(
+  primary: number | null | undefined,
+  legacyAlias: number | null | undefined,
+): number | null | undefined {
+  if (primary != null) return primary;
+  return legacyAlias;
 }
 
 /** Formats whole minutes for UI, e.g. `42 min` or `2 hr 15 min`. */

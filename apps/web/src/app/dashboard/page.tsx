@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { browserGet } from "@/lib/client/api";
 import { getOrgId } from "@/lib/org-storage";
-import type { AccountCreditsResponse } from "@/lib/types";
+import type { AccountProcessingBalanceResponse } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import { SmokePathCard } from "@/components/SmokePathCard";
 import type { ClientError } from "@/lib/errors";
@@ -14,17 +14,42 @@ function errorMessage(err: ClientError): string {
   return err.message;
 }
 
+function minutesAvailable(data: AccountProcessingBalanceResponse): number {
+  return data.processing_minutes_available ?? data.credits_available ?? 0;
+}
+
+function minutesReserved(data: AccountProcessingBalanceResponse): number {
+  return data.processing_minutes_reserved ?? data.credits_reserved ?? 0;
+}
+
+function minutesUsedLifetime(data: AccountProcessingBalanceResponse): number {
+  return data.processing_minutes_used_lifetime ?? data.credits_spent_lifetime ?? 0;
+}
+
+function periodEndLabel(data: AccountProcessingBalanceResponse): string {
+  return data.processing_period_ends_on ?? data.next_credit_expiry ?? "—";
+}
+
 export default function DashboardPage() {
-  const [data, setData] = useState<AccountCreditsResponse | null>(null);
+  const [data, setData] = useState<AccountProcessingBalanceResponse | null>(null);
+  const [usageMirror, setUsageMirror] = useState<AccountProcessingBalanceResponse | null>(null);
   const [error, setError] = useState<ClientError | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await browserGet<AccountCreditsResponse>("/v1/account/credits", getOrgId());
-    if (res.ok) setData(res.data);
-    else setError(res.error);
+    const res = await browserGet<AccountProcessingBalanceResponse>("/v1/account", getOrgId());
+    if (!res.ok) {
+      setError(res.error);
+      setData(null);
+      setUsageMirror(null);
+      setLoading(false);
+      return;
+    }
+    setData(res.data);
+    const usage = await browserGet<AccountProcessingBalanceResponse>("/v1/account/usage", getOrgId());
+    setUsageMirror(usage.ok ? usage.data : null);
     setLoading(false);
   }, []);
 
@@ -38,8 +63,9 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-semibold text-zinc-50">Dashboard</h1>
           <p className="mt-1 max-w-xl text-sm text-zinc-400">
-            Annual archive access and remaining processing time for your organisation. Balances come from{" "}
-            <span className="font-mono text-zinc-500">GET /v1/account/credits</span>.
+            Annual hosted archive access and remaining processing time for your organisation. Balances load from{" "}
+            <span className="font-mono text-zinc-500">GET /v1/account</span> (mirrored by{" "}
+            <span className="font-mono text-zinc-500">GET /v1/account/usage</span>).
           </p>
         </div>
         <Link
@@ -71,7 +97,10 @@ export default function DashboardPage() {
             </p>
           ) : null}
           {error.code === "unauthorized" ? (
-            <p className="mt-2 text-red-100/80">Check server env <code className="rounded bg-black/30 px-1">FEEDFOUNDRY_INTERNAL_API_KEY</code> matches Railway.</p>
+            <p className="mt-2 text-red-100/80">
+              Check server env <code className="rounded bg-black/30 px-1">FEEDFOUNDRY_INTERNAL_API_KEY</code> matches
+              Railway.
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -79,31 +108,42 @@ export default function DashboardPage() {
       {data ? (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <StatCard label="Annual access" value={data.annual_access_status} />
+            <StatCard label="Archive access" value={data.annual_archive_access_status} />
             <StatCard
               label="Processing time available"
-              value={formatApiUnitsAsProcessing(data.credits_available)}
+              value={formatApiUnitsAsProcessing(minutesAvailable(data))}
               tone="ok"
             />
             <StatCard
               label="Held for active jobs"
-              value={formatApiUnitsAsProcessing(data.credits_reserved)}
+              value={formatApiUnitsAsProcessing(minutesReserved(data))}
               tone="pending"
             />
-            <StatCard label="Lifetime processing used" value={formatApiUnitsAsProcessing(data.credits_spent_lifetime)} />
+            <StatCard label="Lifetime processing used" value={formatApiUnitsAsProcessing(minutesUsedLifetime(data))} />
             <StatCard label="Hosting until" value={data.hosting_until ?? "—"} />
-            <StatCard label="Next balance event" value={data.next_credit_expiry ?? "—"} />
+            <StatCard label="Processing period ends" value={periodEndLabel(data)} />
+            <StatCard
+              label="Approx. hours available (API)"
+              value={typeof data.processing_hours_available === "number" ? `${data.processing_hours_available} hr` : "—"}
+            />
           </div>
-          <p className="text-xs text-zinc-600">
-            TODO(api-contract): expose explicit processing seconds on{" "}
-            <span className="font-mono">GET /v1/account/credits</span> so the UI can drop the 1 unit = 1 minute
-            assumption.
-          </p>
         </>
       ) : null}
 
       <SmokePathCard />
-      <DebugPanel title="GET /v1/account/credits" json={data ?? error} />
+      <DebugPanel
+        title="GET /v1/account + GET /v1/account/usage"
+        json={{
+          account: data ?? null,
+          usageMirror: usageMirror ?? null,
+          usageMatches:
+            data && usageMirror
+              ? minutesAvailable(data) === minutesAvailable(usageMirror) &&
+                minutesReserved(data) === minutesReserved(usageMirror)
+              : null,
+          error: error ?? null,
+        }}
+      />
     </div>
   );
 }

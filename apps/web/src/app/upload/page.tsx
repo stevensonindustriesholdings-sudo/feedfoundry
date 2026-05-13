@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { browserGet, browserPost } from "@/lib/client/api";
 import { getOrgId, setLatestJobId } from "@/lib/org-storage";
-import type { CreateJobResponse, JobOutputsResponse, JobStatusResponse, PresignUploadResponse } from "@/lib/types";
+import type { CreateJobResponse, CompleteUploadResponse, JobOutputsResponse, JobStatusResponse, PresignUploadResponse } from "@/lib/types";
 import { OUTPUT_OPTIONS } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import type { ClientError } from "@/lib/errors";
-import { formatApiUnitsAsProcessing } from "@/lib/processing-display";
+import { formatApiUnitsAsProcessing, jobEstimateMinutes } from "@/lib/processing-display";
 
 type DebugState = Record<string, unknown>;
 
@@ -98,8 +98,25 @@ export default function UploadPage() {
     setUploadPct(100);
     setDebug({ presign: pr.data, uploaded: true });
 
+    setStatus("Confirming upload with API…");
+    const complete = await browserPost<CompleteUploadResponse>(
+      "/v1/uploads/complete",
+      { media_asset_id: pr.data.media_asset_id },
+      getOrgId(),
+    );
+    if (!complete.ok) {
+      setError(complete.error);
+      setStatus("Upload reached storage but completion call failed.");
+      setDebug((prev) => ({
+        ...(prev ?? {}),
+        completeError: complete.error,
+      }));
+      return;
+    }
+    setDebug((prev) => ({ ...(prev ?? {}), complete: complete.data }));
+
     if (!confirmJob) {
-      setStatus("Media received. Enable job confirmation below to reserve processing time and queue work.");
+      setStatus("Media received and registered. Enable job confirmation below to reserve processing time and queue work.");
       return;
     }
 
@@ -142,7 +159,7 @@ export default function UploadPage() {
       }
       setLivePollErr(null);
       setLiveJob(jr.data);
-      const done = ["complete", "failed", "cancelled"].includes(jr.data.status);
+      const done = ["completed", "failed", "cancelled"].includes(jr.data.status);
       if (done) {
         const or = await browserGet<JobOutputsResponse>(`/v1/jobs/${encodeURIComponent(id)}/outputs`, getOrgId());
         if (!cancelled && or.ok) setLiveOutputs(or.data);
@@ -300,8 +317,9 @@ export default function UploadPage() {
               <p className="font-semibold text-zinc-100">Job queued</p>
               <p className="mt-2 font-mono text-sm text-zinc-300">{job.job_id}</p>
               <p className="mt-2 text-sm text-zinc-400">
-                Estimated {formatApiUnitsAsProcessing(job.estimated_credits)} · Reserved{" "}
-                {formatApiUnitsAsProcessing(job.reserved_credits)}
+                Estimated {formatApiUnitsAsProcessing(jobEstimateMinutes(job.estimated_processing_minutes, job.estimated_credits))}{" "}
+                · Reserved{" "}
+                {formatApiUnitsAsProcessing(jobEstimateMinutes(job.reserved_processing_minutes, job.reserved_credits))}
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Link href="/jobs" className="text-sm font-semibold text-accent no-underline hover:underline">
@@ -360,7 +378,7 @@ export default function UploadPage() {
                     ))}
                   </ul>
                 </div>
-              ) : liveJob.status === "complete" ? (
+              ) : liveJob.status === "completed" ? (
                 <p className="mt-3 text-xs text-zinc-500">Waiting for output links…</p>
               ) : null}
             </div>

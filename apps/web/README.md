@@ -1,6 +1,6 @@
 # FeedFoundry Web (`apps/web`)
 
-Customer-facing **Next.js (App Router)** app: annual hosted archive positioning, processing credits, upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.”
+Customer-facing **Next.js (App Router)** app: annual hosted archive positioning, processing time allowance, upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.”
 
 ## Requirements
 
@@ -54,7 +54,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Smoke path
 
-On **Dashboard**, use **Backend smoke checks** (manual buttons). Full credit-spending flow stays on **Upload** with explicit **“Confirm job creation”**.
+On **Dashboard**, use **Backend smoke checks** (manual buttons). Full processing reservation flow stays on **Upload** with explicit **“Confirm job creation”**.
 
 ## Staging API (current)
 

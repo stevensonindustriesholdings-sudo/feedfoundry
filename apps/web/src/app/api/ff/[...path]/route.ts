@@ -15,15 +15,19 @@ function isAllowed(method: string, segments: string[]): boolean {
 
   if (method === "GET") {
     if (p === "health" || p === "ready") return true;
-    if (p === "v1/account/credits") return true;
+    if (p === "v1/account" || p === "v1/account/usage" || p === "v1/account/credits") return true;
+    if (p === "v1/jobs") return true;
     if (/^v1\/jobs\/[^/]+$/.test(p)) return true;
     if (/^v1\/jobs\/[^/]+\/outputs$/.test(p)) return true;
+    if (/^v1\/jobs\/[^/]+\/outputs\/catalog$/.test(p)) return true;
     if (/^v1\/manifests\/[^/]+\/[^/]+\.json$/.test(p)) return true;
     return false;
   }
   if (method === "POST") {
     if (p === "v1/uploads/presign") return true;
+    if (p === "v1/uploads/complete") return true;
     if (p === "v1/jobs") return true;
+    if (/^v1\/jobs\/[^/]+\/cancel$/.test(p)) return true;
     return false;
   }
   return false;
@@ -79,7 +83,11 @@ async function handle(
   const path = upstreamPath(pathSegments);
   const orgHeader = request.headers.get(ORG_CLIENT_HEADER);
 
-  if (method === "GET" && path === "/v1/account/credits" && isDevAccountCreditsMockEnabled()) {
+  if (
+    method === "GET" &&
+    isDevAccountCreditsMockEnabled() &&
+    (path === "/v1/account" || path === "/v1/account/usage" || path === "/v1/account/credits")
+  ) {
     return new NextResponse(mockAccountCreditsJson(), {
       status: 200,
       headers: { "content-type": "application/json; charset=utf-8" },

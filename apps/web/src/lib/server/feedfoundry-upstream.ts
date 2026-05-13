@@ -12,7 +12,7 @@ export type ForwardOptions = {
 
 /**
  * Forward a request to the FeedFoundry API with server-side credentials.
- * Path must start with / (e.g. /v1/account/credits).
+ * Path must start with / (e.g. /v1/account).
  */
 export async function forwardToFeedFoundry(
   path: string,
