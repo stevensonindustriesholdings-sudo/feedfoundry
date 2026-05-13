@@ -6,6 +6,7 @@ import os
 import signal
 import socket
 import sys
+import time
 import threading
 from pathlib import Path
 
@@ -37,12 +38,15 @@ from app.services.storage import (  # noqa: E402
     _s3_client,
     bucket_for_outputs,
     bucket_for_source,
+    download_object_to_tempfile,
     head_object_exists,
     job_manifest_object_key,
     job_output_object_key,
     put_json_bytes,
 )
 from app.settings import get_settings  # noqa: E402
+
+from media_inspection import build_media_inspection_payload, run_ffprobe_json  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("feedfoundry.worker")
@@ -147,7 +151,13 @@ def _advance(session: Session, job: Job, status: JobStatus, stage: str, progress
     session.commit()
 
 
-def _write_stub_outputs(session: Session, job: Job, media: MediaAsset) -> None:
+def _write_stub_outputs(
+    session: Session,
+    job: Job,
+    media: MediaAsset,
+    *,
+    media_inspection_payload: dict | None = None,
+) -> None:
     settings = get_settings()
     out_bucket = bucket_for_outputs(settings)
     org_id = job.organisation_id
@@ -188,6 +198,24 @@ def _write_stub_outputs(session: Session, job: Job, media: MediaAsset) -> None:
             json_payload=payload if output_type == JobOutputType.HOSTED_MANIFEST else None,
         )
         session.add(jo)
+
+    if media_inspection_payload is not None:
+        filename = "media_inspection.json"
+        key = job_output_object_key(org_id=org_id, job_id=job.id, filename=filename)
+        body = json.dumps(media_inspection_payload, indent=2).encode("utf-8")
+        put_json_bytes(bucket=out_bucket, key=key, body=body, settings=settings)
+        manifest_doc["outputs"].append(
+            {"output_type": JobOutputType.MEDIA_INSPECTION.value, "storage_key": key, "filename": filename}
+        )
+        session.add(
+            JobOutput(
+                job_id=job.id,
+                organisation_id=org_id,
+                output_type=JobOutputType.MEDIA_INSPECTION,
+                storage_key=key,
+                json_payload=None,
+            )
+        )
 
     if media.creator_slug:
         manifest_doc["creator_slug"] = media.creator_slug
@@ -232,6 +260,55 @@ def _settle_credits(session: Session, job: Job) -> None:
     session.commit()
 
 
+def _wait_for_source_object(
+    *,
+    bucket: str,
+    key: str,
+    settings,
+    max_wait_seconds: float,
+) -> bool:
+    """HEAD until object exists or timeout (S3/R2 read-after-write after presigned PUT)."""
+    deadline = time.monotonic() + max(0.5, max_wait_seconds)
+    interval = 0.2
+    while time.monotonic() < deadline:
+        if head_object_exists(bucket=bucket, key=key, settings=settings):
+            return True
+        time.sleep(interval)
+        interval = min(interval * 1.4, 2.5)
+    return False
+
+
+def _build_media_inspection_payload(
+    *,
+    settings,
+    src_bucket: str,
+    media: MediaAsset,
+) -> dict | None:
+    """Return ffprobe-derived inspection dict, or None when S3 is unavailable."""
+    if _s3_client(settings) is None:
+        log.info("skip_media_inspection_no_s3_client media_asset_id=%s", media.id)
+        return None
+    suffix = os.path.splitext(media.original_filename or "")[1] or ".mp4"
+    tmp_path: str | None = None
+    try:
+        tmp_path = download_object_to_tempfile(
+            bucket=src_bucket,
+            key=media.storage_source_key,
+            settings=settings,
+            suffix=suffix,
+        )
+        ffprobe_bin = os.environ.get("FFPROBE_BINARY", "ffprobe")
+        raw = run_ffprobe_json(tmp_path, ffprobe_binary=ffprobe_bin)
+        size = os.path.getsize(tmp_path)
+        return build_media_inspection_payload(raw, file_size_bytes=size)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
 def process_job(session: Session, job: Job) -> None:
     settings = get_settings()
     media = session.get(MediaAsset, job.media_asset_id)
@@ -244,10 +321,19 @@ def process_job(session: Session, job: Job) -> None:
     app_env = (settings.app_env or "").lower()
     can_head = _s3_client(settings) is not None
 
-    if not skip_verify and can_head and not head_object_exists(
-        bucket=src_bucket, key=media.storage_source_key, settings=settings
-    ):
+    missing_source_continued = False
+    source_present = True
+    if not skip_verify and can_head:
+        max_wait = float(os.environ.get("FF_SOURCE_HEAD_MAX_WAIT_SECONDS", "45"))
+        source_present = _wait_for_source_object(
+            bucket=src_bucket,
+            key=media.storage_source_key,
+            settings=settings,
+            max_wait_seconds=max_wait,
+        )
+    if not skip_verify and can_head and not source_present:
         if app_env == "staging" and not strict_source:
+            missing_source_continued = True
             log.warning(
                 "staging_missing_source_continuing_stub job_id=%s media_asset_id=%s key=%s",
                 job.id,
@@ -270,7 +356,27 @@ def process_job(session: Session, job: Job) -> None:
     _advance(session, job, JobStatus.QA_VALIDATING, "QA validation", 88)
     _advance(session, job, JobStatus.EXPORTING, "Writing outputs to object storage", 95)
 
-    _write_stub_outputs(session, job, media)
+    media_inspection_payload: dict | None = None
+    if can_head and not missing_source_continued:
+        try:
+            media_inspection_payload = _build_media_inspection_payload(
+                settings=settings, src_bucket=src_bucket, media=media
+            )
+        except Exception as exc:
+            if skip_verify:
+                log.warning(
+                    "skip_media_inspection_after_error job_id=%s err=%s",
+                    job.id,
+                    exc,
+                )
+                media_inspection_payload = None
+            else:
+                log.exception("media_inspection_failed job_id=%s", job.id)
+                raise RuntimeError("media_inspection_failed") from exc
+    elif missing_source_continued:
+        log.info("skip_media_inspection_staging_missing_source job_id=%s", job.id)
+
+    _write_stub_outputs(session, job, media, media_inspection_payload=media_inspection_payload)
 
     _settle_credits(session, job)
 

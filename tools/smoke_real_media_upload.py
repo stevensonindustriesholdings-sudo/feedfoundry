@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""
+End-to-end smoke: presign → PUT source → create job → poll → list outputs.
+
+Requires a small MP4 on disk (generate with host ffmpeg, or download once with curl).
+Does not commit secrets; reads from the environment.
+
+Environment:
+  SMOKE_BASE_URL or BASE_URL — staging API origin (e.g. https://…railway.app)
+  SMOKE_INTERNAL_KEY — Bearer value (same as FF_INTERNAL_API_KEY on api-v2-IQho)
+  SMOKE_ORG_ID — X-Org-Id (e.g. org_dev_demo after seed)
+  SMOKE_MP4_PATH — path to a small real .mp4 file to upload
+
+Optional:
+  SMOKE_POLL_SECONDS — default 5
+  SMOKE_JOB_TIMEOUT_SECONDS — default 600
+
+Successful completion expects worker-v2 to finish the job. Output count is **7**
+when R2 is configured and media_inspection.json is written (6 stubs + inspection),
+or **6** when the worker has no S3 client / staging missing-source continuation / etc.
+The script prints output types so you can verify ``media_inspection`` is present.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Tuple
+
+
+def _post_json(
+    base: str,
+    path: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+    *,
+    timeout: float = 120.0,
+) -> Tuple[int, bytes]:
+    url = f"{base.rstrip('/')}{path}"
+    data = json.dumps(payload).encode("utf-8")
+    h = {
+        "User-Agent": "feedfoundry-smoke-real-media/1.0",
+        "Content-Type": "application/json",
+        **headers,
+    }
+    req = urllib.request.Request(url, data=data, headers=h, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.getcode() or 200, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except OSError as e:
+        return -1, repr(e).encode("utf-8")
+
+
+def _get_url(url: str, *, timeout: float = 60.0) -> Tuple[int, bytes]:
+    h = {"User-Agent": "feedfoundry-smoke-real-media/1.0"}
+    req = urllib.request.Request(url, headers=h, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.getcode() or 200, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except OSError as e:
+        return -1, repr(e).encode("utf-8")
+
+
+def _get(
+    base: str,
+    path: str,
+    headers: dict[str, str],
+    *,
+    timeout: float = 60.0,
+) -> Tuple[int, bytes]:
+    url = f"{base.rstrip('/')}{path}"
+    h = {"User-Agent": "feedfoundry-smoke-real-media/1.0", **headers}
+    req = urllib.request.Request(url, headers=h, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.getcode() or 200, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except OSError as e:
+        return -1, repr(e).encode("utf-8")
+
+
+def _put_bytes(url: str, body: bytes, content_type: str, *, timeout: float = 300.0) -> Tuple[int, str]:
+    h = {
+        "User-Agent": "feedfoundry-smoke-real-media/1.0",
+        "Content-Type": content_type,
+        "Content-Length": str(len(body)),
+    }
+    req = urllib.request.Request(url, data=body, headers=h, method="PUT")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.getcode() or 200, ""
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", errors="replace")[:500]
+    except OSError as e:
+        return -1, repr(e)
+
+
+def main() -> int:
+    base = (os.environ.get("SMOKE_BASE_URL") or os.environ.get("BASE_URL") or "").strip()
+    key = (os.environ.get("SMOKE_INTERNAL_KEY") or "").strip()
+    org = (os.environ.get("SMOKE_ORG_ID") or "org_dev_demo").strip()
+    mp4_path = (os.environ.get("SMOKE_MP4_PATH") or "").strip()
+
+    if not base or not key or not mp4_path:
+        print(
+            "Set SMOKE_BASE_URL (or BASE_URL), SMOKE_INTERNAL_KEY, SMOKE_ORG_ID, "
+            "and SMOKE_MP4_PATH to a small .mp4 file.",
+            file=sys.stderr,
+        )
+        return 2
+
+    p = Path(mp4_path)
+    if not p.is_file():
+        print(f"SMOKE_MP4_PATH not a file: {mp4_path}", file=sys.stderr)
+        return 2
+
+    body = p.read_bytes()
+    filename = p.name
+    content_type = "video/mp4"
+    poll_s = float(os.environ.get("SMOKE_POLL_SECONDS", "5"))
+    timeout_s = float(os.environ.get("SMOKE_JOB_TIMEOUT_SECONDS", "600"))
+
+    auth = {"Authorization": f"Bearer {key}", "X-Org-Id": org}
+
+    code, raw = _post_json(
+        base,
+        "/v1/uploads/presign",
+        {
+            "filename": filename,
+            "content_type": content_type,
+            "file_size_bytes": len(body),
+            "media_type": "video",
+        },
+        auth,
+    )
+    if code != 200:
+        print(f"presign failed http={code} body={raw[:500]!r}", file=sys.stderr)
+        return 1
+    pres = json.loads(raw.decode("utf-8"))
+    media_asset_id = pres["media_asset_id"]
+    upload_url = pres["upload_url"]
+
+    put_code, put_err = _put_bytes(upload_url, body, content_type)
+    if put_code < 200 or put_code >= 300:
+        print(f"PUT upload failed http={put_code} err={put_err}", file=sys.stderr)
+        return 1
+    print(f"PUT source ok ({put_code}) media_asset_id={media_asset_id}")
+
+    jcode, jraw = _post_json(
+        base,
+        "/v1/jobs",
+        {"media_asset_id": media_asset_id, "requested_outputs": ["transcript"]},
+        auth,
+    )
+    if jcode != 200:
+        print(f"POST /v1/jobs failed http={jcode} body={jraw[:500]!r}", file=sys.stderr)
+        return 1
+    job_id = json.loads(jraw.decode("utf-8"))["job_id"]
+    print(f"job created job_id={job_id}")
+
+    deadline = time.monotonic() + timeout_s
+    status = ""
+    while time.monotonic() < deadline:
+        scode, sbody = _get(base, f"/v1/jobs/{job_id}", auth)
+        if scode != 200:
+            print(f"GET job status http={scode} body={sbody[:300]!r}", file=sys.stderr)
+            return 1
+        info = json.loads(sbody.decode("utf-8"))
+        status = info.get("status", "")
+        print(f"  job status={status} progress={info.get('progress_percent')}")
+        if status in ("complete", "failed", "cancelled"):
+            break
+        time.sleep(poll_s)
+
+    if status != "complete":
+        print(f"job did not complete (last status={status})", file=sys.stderr)
+        return 1
+
+    ocode, obody = _get(base, f"/v1/jobs/{job_id}/outputs", auth)
+    if ocode != 200:
+        print(f"GET outputs http={ocode} body={obody[:300]!r}", file=sys.stderr)
+        return 1
+    outs = json.loads(obody.decode("utf-8")).get("outputs", [])
+    types = [o.get("type") for o in outs]
+    print(f"outputs count={len(types)} types={types}")
+    if "media_inspection" not in types:
+        print(
+            "FAIL: media_inspection missing (need R2 + visible source + worker ffprobe).",
+            file=sys.stderr,
+        )
+        return 1
+    print("PASS: media_inspection output present.")
+    insp = next(o for o in outs if o.get("type") == "media_inspection")
+    url = insp.get("download_url") or ""
+    if not url:
+        print("FAIL: media_inspection has no download_url", file=sys.stderr)
+        return 1
+    icode, ibody = _get_url(url, timeout=60.0)
+    if icode != 200:
+        print(f"FAIL: fetch inspection http={icode}", file=sys.stderr)
+        return 1
+    doc = json.loads(ibody.decode("utf-8"))
+    required = (
+        "duration_seconds",
+        "container_format",
+        "video_codec",
+        "audio_codec",
+        "file_size_bytes",
+        "chunk_plan",
+    )
+    missing = [k for k in required if k not in doc]
+    if missing:
+        print(f"FAIL: inspection JSON missing keys {missing}", file=sys.stderr)
+        return 1
+    if not isinstance(doc.get("chunk_plan"), list):
+        print("FAIL: chunk_plan not a list", file=sys.stderr)
+        return 1
+    print(
+        "PASS: inspection fields ok "
+        f"duration={doc.get('duration_seconds')} container={doc.get('container_format')} "
+        f"v={doc.get('video_codec')} a={doc.get('audio_codec')} size={doc.get('file_size_bytes')} "
+        f"chunks={len(doc['chunk_plan'])}",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
