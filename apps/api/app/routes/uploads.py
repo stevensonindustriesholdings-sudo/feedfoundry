@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
+from app.config.env_validation import is_strict_deployment_env
 from app.auth import require_organisation_id, verify_internal_key
 from app.db import get_session
 from app.models import MediaAsset, MediaAssetStatus, MediaType
@@ -8,6 +9,7 @@ from app.schemas.api import PresignUploadRequest, PresignUploadResponse
 from app.services import annual_access as annual_access_svc
 from app.services import storage as storage_service
 from app.services.organisation_guard import ensure_org_row_for_internal_routes
+from app.settings import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -30,6 +32,16 @@ def presign_upload(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid media_type")
 
     ensure_org_row_for_internal_routes(session, organisation_id)
+
+    settings = get_settings()
+    if is_strict_deployment_env(settings.app_env) and not storage_service.storage_client_ready(settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "storage_not_configured",
+                "message": "Object storage credentials are not configured; uploads cannot be presigned.",
+            },
+        )
 
     asset = MediaAsset(
         organisation_id=organisation_id,

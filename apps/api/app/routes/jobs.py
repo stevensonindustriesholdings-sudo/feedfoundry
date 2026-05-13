@@ -1,16 +1,72 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
+"""Job lifecycle API.
+
+Integration: **frontend / proxy** → this router → **Postgres** (job rows, wallet
+reservations) → **worker** polls jobs and writes ``job_outputs`` + manifest objects.
+
+Reservations call ``credit_ledger.reserve_processing_minutes`` (D's foundation name);
+responses use **processing minutes** for customer-visible fields. Legacy ``*_credits``
+fields on the response are kept one release for backward compatibility and are
+marked deprecated in OpenAPI.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import desc
+from sqlmodel import Session, select
 
 from app.auth import require_organisation_id, verify_internal_key
 from app.db import get_session
+from app.http_errors import problem
 from app.models import Job, JobStatus, MediaAsset, MediaAssetStatus
-from app.schemas.api import CreateJobRequest, CreateJobResponse, JobStatusResponse
+from app.schemas.api import (
+    CreateJobRequest,
+    CreateJobResponse,
+    JobListResponse,
+    JobStatusResponse,
+    JobSummaryItem,
+)
+from app.schemas.processing_display import processing_minutes_to_approx_hours
 from app.services import annual_access as annual_access_svc
-from app.services.credit_ledger import CreditLedgerError, ledger_reserve_key, reserve_processing_minutes
+from app.services.credit_ledger import (
+    CreditLedgerError,
+    ledger_reserve_key,
+    reserve_processing_minutes,
+)
 from app.services import job_estimator
 from app.settings import get_settings
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+@router.get("", response_model=JobListResponse)
+def list_jobs(
+    _: None = Depends(verify_internal_key),
+    organisation_id: str = Depends(require_organisation_id),
+    session: Session = Depends(get_session),
+    limit: int = 25,
+) -> JobListResponse:
+    lim = max(1, min(limit, 100))
+    stmt = (
+        select(Job)
+        .where(Job.organisation_id == organisation_id)
+        .order_by(desc(Job.created_at))
+        .limit(lim)
+    )
+    rows = session.exec(stmt).all()
+    items: list[JobSummaryItem] = []
+    for job in rows:
+        items.append(
+            JobSummaryItem(
+                job_id=job.id,
+                status=job.status.value,
+                progress_percent=job.progress_percent,
+                current_stage=job.current_stage,
+                media_asset_id=job.media_asset_id,
+                created_at=job.created_at.isoformat() if job.created_at else None,
+            )
+        )
+    return JobListResponse(jobs=items)
 
 
 @router.post("", response_model=CreateJobResponse)
@@ -21,19 +77,25 @@ def create_job(
     session: Session = Depends(get_session),
 ) -> CreateJobResponse:
     if not annual_access_svc.has_active_processing_entitlement(session, organisation_id):
-        raise HTTPException(
+        raise problem(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="annual_access_required",
+            code="annual_archive_access_required",
+            message="Active annual hosted archive access is required to create jobs.",
         )
 
     ma = session.get(MediaAsset, body.media_asset_id)
     if not ma or ma.organisation_id != organisation_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="media_asset_not_found")
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="media_asset_not_found",
+            message="Media asset not found for this organisation.",
+        )
 
     if ma.status in (MediaAssetStatus.REJECTED, MediaAssetStatus.ARCHIVED):
-        raise HTTPException(
+        raise problem(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="media_asset_invalid_state",
+            code="media_asset_invalid_state",
+            message="This media asset cannot be processed in its current state.",
         )
 
     est = job_estimator.estimate_job_processing_minutes(
@@ -66,14 +128,16 @@ def create_job(
     except CreditLedgerError as e:
         if str(e) == "insufficient_processing_allowance":
             session.rollback()
-            raise HTTPException(
+            raise problem(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="insufficient_credits",
+                code="insufficient_processing_allowance",
+                message="Not enough processing minutes available to reserve this job.",
             )
         session.rollback()
-        raise HTTPException(
+        raise problem(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="processing_allowance_reservation_failed",
+            code="processing_allowance_reservation_failed",
+            message="Could not reserve processing minutes for this job.",
         )
 
     job.status = JobStatus.QUEUED
@@ -87,6 +151,8 @@ def create_job(
         status=job.status.value,
         estimated_processing_minutes=est,
         reserved_processing_minutes=est,
+        estimated_processing_hours=processing_minutes_to_approx_hours(est) or 0.0,
+        # Deprecated aliases preserved one release.
         estimated_credits=est,
         reserved_credits=est,
     )
@@ -101,17 +167,25 @@ def get_job(
 ) -> JobStatusResponse:
     job = session.get(Job, job_id)
     if not job or job.organisation_id != organisation_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found")
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="job_not_found",
+            message="Job not found for this organisation.",
+        )
+    est = job.estimated_processing_minutes
+    resv = job.reserved_processing_minutes
     charged = job.actual_processing_minutes_charged
     return JobStatusResponse(
         job_id=job.id,
         status=job.status.value,
         progress_percent=job.progress_percent,
         current_stage=job.current_stage,
-        estimated_processing_minutes=job.estimated_processing_minutes,
-        reserved_processing_minutes=job.reserved_processing_minutes,
+        estimated_processing_minutes=est,
+        reserved_processing_minutes=resv,
         actual_processing_minutes_charged=charged,
-        estimated_credits=job.estimated_processing_minutes,
-        reserved_credits=job.reserved_processing_minutes,
+        estimated_processing_hours=processing_minutes_to_approx_hours(est),
+        # Deprecated aliases preserved one release.
+        estimated_credits=est,
+        reserved_credits=resv,
         actual_credits_so_far=charged,
     )

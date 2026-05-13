@@ -41,6 +41,11 @@ def job_manifest_object_key(*, org_id: str, job_id: str) -> str:
     return f"orgs/{org_id}/jobs/{job_id}/manifest.json"
 
 
+def storage_client_ready(settings=None) -> bool:
+    """True when presign and object I/O can use a real S3-compatible client (not dev placeholders)."""
+    return _s3_client(settings) is not None
+
+
 def _s3_client(settings=None) -> Optional[BaseClient]:
     s = settings or get_settings()
     endpoint = r2_s3_endpoint_url(s)
