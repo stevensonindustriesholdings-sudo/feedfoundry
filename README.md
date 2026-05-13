@@ -99,6 +99,14 @@ PYTHONPATH=../api:. pytest tests/ -q
 cd ../..
 ```
 
+From repo root in one shot (after the same `venv` + installs as above):
+
+```bash
+( cd apps/api && PYTHONPATH=. pytest tests/ -q ) && ( cd apps/worker && PYTHONPATH=../api:. pytest tests/ -q )
+```
+
+This runs the full API suite (credit ledger, upload→job slice, auth errors, env templates) plus worker pipeline and settlement tests.
+
 ### 8. Smoke test (local API must be running)
 
 From repo root (set `BASE_URL` to your running API, e.g. `http://127.0.0.1:8000`):
