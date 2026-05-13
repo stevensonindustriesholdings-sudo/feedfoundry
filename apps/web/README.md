@@ -1,6 +1,6 @@
 # FeedFoundry Web (`apps/web`)
 
-Customer-facing **Next.js (App Router)** app: annual hosted archive positioning, processing time allowance, upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.”
+Customer-facing **Next.js (App Router)** app: **annual hosted archive** and **creator archive** positioning, **processing allowance** / **processing time** (avoid “credits” in customer copy), upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.” Full stack setup: [docs/runbook.md](../../docs/runbook.md).
 
 ## Requirements
 
@@ -54,7 +54,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Smoke path
 
-On **Dashboard**, use **Backend smoke checks** (manual buttons). Full processing reservation flow stays on **Upload** with explicit **“Confirm job creation”**.
+On **Dashboard**, use **Backend smoke checks** (manual buttons). Full job-creation flow stays on **Upload** with explicit **“Confirm job creation”**; the API may **reserve estimated processing minutes** while a job is active, and releases that reservation on **failure** or **cancellation** (those terminal states do not debit actual processing time from the allowance).
 
 ## Staging API (current)
 

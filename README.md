@@ -2,7 +2,9 @@
 
 Creator archive intelligence engine: upload media, process with FFmpeg and AI on Railway, expose structured outputs via a FastAPI service for Base44 and other clients.
 
-Commercial posture is **annual hosted archive access** plus **processing credits** consumed per job (not monthly subscription SaaS).
+Commercial posture is **annual hosted archive access** plus a **processing allowance** (metered per job on an internal ledger; not monthly subscription SaaS). Customer-facing copy should say **processing allowance** / **included processing**, not “credits.”
+
+**Operator runbook (setup, env, Railway, Base44, AI):** [docs/runbook.md](docs/runbook.md)
 
 ## Repository layout
 
@@ -12,7 +14,7 @@ Commercial posture is **annual hosted archive access** plus **processing credits
 - `scripts/seed_dev.py` — dev org, user, annual access, wallet, demo media asset
 - `infra/railway` — Railway deployment hints
 - `prompts/system` — system prompts for AI modules
-- `docs` — technical spec and API contract
+- `docs` — [runbook](docs/runbook.md), technical spec, API contract, Railway deployment
 - `alembic` (under `apps/api/alembic`) — database migrations (Postgres in production; `001_initial` bootstraps schema from SQLModel metadata)
 
 ## Local development (exact path)
@@ -60,7 +62,7 @@ export DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/feedfoundr
 PYTHONPATH=apps/api python scripts/seed_dev.py
 ```
 
-This creates (idempotent where possible) `org_dev_demo`, active annual access (`creator_core` / 300 included credits from the routing pack), a credit wallet, an `annual_grant` transaction with idempotency key `ff:seed_dev:annual_grant`, and a demo `MediaAsset` `ma_dev_demo` with slugs `demo-creator` / `episode-001`.
+This creates (idempotent where possible) `org_dev_demo`, active annual access (`creator_core` / 300 included processing units on the internal wallet from the routing pack), a wallet, an `annual_grant` transaction with idempotency key `ff:seed_dev:annual_grant`, and a demo `MediaAsset` `ma_dev_demo` with slugs `demo-creator` / `episode-001`.
 
 **Production guard:** the script exits unless `ALLOW_DEV_SEED=true` when `APP_ENV` is `production` or `prod`. Never set `ALLOW_DEV_SEED` on a real production database unless you explicitly intend to insert demo data.
 
@@ -144,7 +146,7 @@ curl -sS -X POST "http://localhost:8000/v1/jobs" \
 # Job status
 curl -sS "http://localhost:8000/v1/jobs/job_..." -H "$H" -H "$O"
 
-# Account credits
+# Account balance (internal route name; expose as “processing allowance” in UI)
 curl -sS "http://localhost:8000/v1/account/credits" -H "$H" -H "$O"
 
 # Outputs (signed download URLs; public manifest is unauthenticated)

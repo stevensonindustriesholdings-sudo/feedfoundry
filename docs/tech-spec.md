@@ -9,7 +9,7 @@ FeedFoundry processes creator-uploaded media into structured archive assets. V1 
 | Component | Role |
 |-----------|------|
 | Base44 | Customer UI, auth UX, payments UX, proxies to Railway API |
-| FastAPI (`apps/api`) | Presigned uploads, jobs, credits, outputs, Stripe webhooks, admin |
+| FastAPI (`apps/api`) | Presigned uploads, jobs, ledger/account balance, outputs, Stripe webhooks, admin |
 | Worker (`apps/worker`) | FFmpeg, chunking, transcription orchestration, AI modules, QA, export |
 | Postgres | Source of truth for orgs, wallets, jobs, outputs, usage logs |
 | Object storage | Source files, intermediates, artifacts, public manifest |
@@ -24,9 +24,9 @@ Failure: any active state → `failed`.
 
 Cancellation: `created`, `queued`, or `awaiting_credit_reservation` → `cancelled`.
 
-## Credits
+## Internal ledger (processing allowance)
 
-Operations: estimate, reserve, debit, release, refund per `credit_transactions` types. The wallet maintains `balance_available`, `balance_reserved`, and lifetime counters.
+Operations: estimate, reserve, debit, release, refund per `credit_transactions` types. The wallet maintains `balance_available`, `balance_reserved`, and lifetime counters. **Failed jobs:** the worker releases the full reservation (`fail_job` + `ledger_release_failure_key`); no debit, so the customer’s allowance is not consumed for that failure. Expose balances in product UI as **processing allowance**, not “credits.”
 
 ## AI
 
