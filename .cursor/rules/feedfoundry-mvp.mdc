@@ -1,0 +1,21 @@
+---
+description: FeedFoundry MVP v0.1 parallel lanes — read docs/MVP_PARALLEL_CONTRACT.md before lane work
+alwaysApply: false
+---
+
+## Control rod (required in every lane agent prompt)
+
+Do not invent extra product scope. Do not generalise the platform. Do not redesign unrelated systems. The only accepted work is the named lane. If you find unrelated issues, write them in a TODO section and keep moving.
+
+## Before any lane work
+
+1. Read **`docs/MVP_PARALLEL_CONTRACT.md`** (source of truth for scope, language, errors, env vars, lane boundaries).
+2. Stay inside the lane you were assigned (A–G per that doc).
+3. List changed files in your handoff; add tests/smoke where practical.
+4. Customer-facing copy: **processing time / minutes / hours**, **top-up**, **currently processing** — never **credits**, **tokens**, or fake currency for customers.
+
+## Quick reference
+
+- **Errors:** `ACCESS_INACTIVE`, `INSUFFICIENT_PROCESSING_TIME`, `PROCESSING_TIME_RESERVATION_FAILED`, `MEDIA_DURATION_TOO_LONG`, `JOB_FAILED_PROCESSING_RELEASED`.
+- **Env (shared):** `FF_GOODWILL_MAX_SHORTFALL_MINUTES`, `FF_MAX_MEDIA_SECONDS`, `FF_AI_ENABLED`, `FF_MAX_TOKENS_PER_JOB`, `FF_MAX_COST_PER_JOB_GBP`, `FF_RETRY_MAX`.
+- **Ledger semantics:** reserve on start intent; **consume** only on **success**; **release** on fail/cancel; goodwill only when allowing a slightly short job.
