@@ -34,6 +34,7 @@ from app.services.credit_ledger import (  # noqa: E402
     release_reserved_credits,
 )
 from app.services.storage import (  # noqa: E402
+    _s3_client,
     bucket_for_outputs,
     bucket_for_source,
     head_object_exists,
@@ -239,10 +240,28 @@ def process_job(session: Session, job: Job) -> None:
 
     src_bucket = bucket_for_source(settings)
     skip_verify = os.environ.get("FF_SKIP_SOURCE_VERIFY", "").lower() in ("1", "true", "yes")
-    if not skip_verify and not head_object_exists(
+    strict_source = os.environ.get("FF_STRICT_SOURCE_VERIFY", "").lower() in ("1", "true", "yes")
+    app_env = (settings.app_env or "").lower()
+    can_head = _s3_client(settings) is not None
+
+    if not skip_verify and can_head and not head_object_exists(
         bucket=src_bucket, key=media.storage_source_key, settings=settings
     ):
-        raise RuntimeError("source_object_missing")
+        if app_env == "staging" and not strict_source:
+            log.warning(
+                "staging_missing_source_continuing_stub job_id=%s media_asset_id=%s key=%s",
+                job.id,
+                media.id,
+                media.storage_source_key,
+            )
+        else:
+            raise RuntimeError("source_object_missing")
+    elif not skip_verify and not can_head:
+        log.warning(
+            "worker_skip_source_head_no_s3_client job_id=%s app_env=%s",
+            job.id,
+            app_env,
+        )
 
     _advance(session, job, JobStatus.EXTRACTING_AUDIO, "Extracting audio", 20)
     _advance(session, job, JobStatus.CHUNKING, "Chunking", 35)
