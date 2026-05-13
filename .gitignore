@@ -59,7 +59,12 @@ Thumbs.db
 tmp/
 temp/
 
-# Node — FeedFoundry web (Next.js)
+# Sample-pack batch smoke (local artifacts)
+sample-pack-report.md
+sample-pack-report.csv
+
+# Node — FeedFoundry web (Next.js); root `npm install` with workspaces hoists here
+/node_modules/
 apps/web/node_modules/
 apps/web/.next/
 apps/web/out/
