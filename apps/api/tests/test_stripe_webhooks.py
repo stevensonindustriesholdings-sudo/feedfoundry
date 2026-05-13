@@ -125,7 +125,7 @@ def test_invalid_signature_rejected(api_client: TestClient, stripe_env, monkeypa
         headers={"Stripe-Signature": "t=1,v1=bad"},
     )
     assert r.status_code == 400
-    assert r.json()["detail"] == "invalid_signature"
+    assert r.json()["code"] == "invalid_signature"
 
 
 def test_unknown_price_logged_no_crash(db_session: Session, stripe_env, caplog):
