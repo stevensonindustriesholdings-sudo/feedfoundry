@@ -101,6 +101,35 @@
         "patreon": { "type": "object" },
         "website": { "type": "object" }
       }
+    },
+    "outputs_available": {
+      "type": "array",
+      "description": "FeedFoundry job output types present for this asset (v0 operator field).",
+      "items": { "type": "string" }
+    },
+    "derived_from": {
+      "type": "string",
+      "description": "Transcript pipeline lineage (e.g. transcript_stub vs openai_whisper)."
+    },
+    "transcript_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": ["string", "null"] },
+        "segment_count": { "type": "integer", "minimum": 0 },
+        "combined_preview": { "type": "string" }
+      }
+    },
+    "media_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": { "type": ["number", "null"] },
+        "video_codec": { "type": ["string", "null"] },
+        "audio_codec": { "type": ["string", "null"] },
+        "container_format": { "type": ["string", "null"] },
+        "file_size_bytes": { "type": ["integer", "null"] }
+      }
     }
   }
 }

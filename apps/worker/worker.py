@@ -49,6 +49,14 @@ from app.settings import get_settings  # noqa: E402
 from media_inspection import inspect_media_file  # noqa: E402
 from pipeline.audio_extraction import run_audio_extraction  # noqa: E402
 from pipeline.transcript import TranscriptPipelineInput, run_transcript_pipeline_v0  # noqa: E402
+from pipeline.transcript_derived_outputs import (  # noqa: E402
+    build_chapters_from_transcript,
+    build_fact_sheet_from_transcript,
+    build_faqs_from_transcript,
+    build_hosted_manifest_from_transcript,
+    build_metadata_from_transcript,
+    derived_from_for_transcript,
+)  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("feedfoundry.worker")
@@ -105,6 +113,9 @@ STUB_OUTPUT_SPECS: list[tuple[str, JobOutputType, dict]] = [
         },
     ),
 ]
+
+STUB_TEMPLATE_BY_TYPE: dict[JobOutputType, dict] = {ot: dict(payload) for _fn, ot, payload in STUB_OUTPUT_SPECS}
+OUTPUT_WRITE_ORDER: list[tuple[str, JobOutputType]] = [(fn, ot) for fn, ot, _p in STUB_OUTPUT_SPECS]
 
 
 def _claim_job_sqlite(session: Session):
@@ -178,12 +189,59 @@ def _write_stub_outputs(
         "outputs": [],
     }
 
-    for filename, output_type, payload_template in STUB_OUTPUT_SPECS:
+    include_mi = media_inspection_payload is not None
+    planned_types = [
+        JobOutputType.RAW_TRANSCRIPT.value,
+        JobOutputType.CHAPTERS.value,
+        JobOutputType.FACT_SHEET.value,
+        JobOutputType.FAQS.value,
+        JobOutputType.METADATA.value,
+        JobOutputType.HOSTED_MANIFEST.value,
+    ]
+    if include_mi:
+        planned_types.append(JobOutputType.MEDIA_INSPECTION.value)
+
+    for filename, output_type in OUTPUT_WRITE_ORDER:
         if output_type == JobOutputType.RAW_TRANSCRIPT and transcript_payload is not None:
             payload = dict(transcript_payload)
+        elif output_type == JobOutputType.RAW_TRANSCRIPT:
+            payload = dict(STUB_TEMPLATE_BY_TYPE[JobOutputType.RAW_TRANSCRIPT])
+        elif transcript_payload is not None:
+            df = derived_from_for_transcript(transcript_payload)
+            if output_type == JobOutputType.CHAPTERS:
+                payload = build_chapters_from_transcript(
+                    transcript_payload, media_inspection_payload, derived_from=df
+                )
+            elif output_type == JobOutputType.FACT_SHEET:
+                payload = build_fact_sheet_from_transcript(
+                    transcript_payload, media_inspection_payload, derived_from=df
+                )
+            elif output_type == JobOutputType.FAQS:
+                payload = build_faqs_from_transcript(
+                    transcript_payload, media_inspection_payload, derived_from=df
+                )
+            elif output_type == JobOutputType.METADATA:
+                payload = build_metadata_from_transcript(
+                    transcript_payload,
+                    media_inspection_payload,
+                    derived_from=df,
+                    original_basename=media.original_filename,
+                )
+            elif output_type == JobOutputType.HOSTED_MANIFEST:
+                payload = build_hosted_manifest_from_transcript(
+                    transcript=transcript_payload,
+                    media_inspection=media_inspection_payload,
+                    creator_slug=media.creator_slug or "",
+                    asset_slug=media.asset_slug or "",
+                    original_basename=media.original_filename,
+                    outputs_available=planned_types,
+                    derived_from=df,
+                )
+            else:
+                payload = dict(STUB_TEMPLATE_BY_TYPE[output_type])
         else:
-            payload = dict(payload_template)
-        if output_type == JobOutputType.HOSTED_MANIFEST:
+            payload = dict(STUB_TEMPLATE_BY_TYPE[output_type])
+        if output_type == JobOutputType.HOSTED_MANIFEST and transcript_payload is None:
             if media.creator_slug:
                 payload["creator_slug"] = media.creator_slug
             if media.asset_slug:
@@ -327,7 +385,7 @@ def process_job(session: Session, job: Job) -> None:
     _advance(session, job, JobStatus.EXTRACTING_AUDIO, "Extracting audio", 20)
     _advance(session, job, JobStatus.CHUNKING, "Chunking", 35)
     _advance(session, job, JobStatus.TRANSCRIBING, "Transcribing", 50)
-    _advance(session, job, JobStatus.GENERATING_OUTPUTS, "Generating stub outputs", 72)
+    _advance(session, job, JobStatus.GENERATING_OUTPUTS, "Generating outputs", 72)
     _advance(session, job, JobStatus.QA_VALIDATING, "QA validation", 88)
     _advance(session, job, JobStatus.EXPORTING, "Writing outputs to object storage", 95)
 

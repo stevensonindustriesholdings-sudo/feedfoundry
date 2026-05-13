@@ -19,9 +19,11 @@ Optional:
     transcript_stub unless SMOKE_ALLOW_OPENAI_TRANSCRIPT=1 (worker has OpenAI path).
 
 Successful completion expects worker-v2 to finish the job. Output count is **7**
-when R2 is configured and media_inspection.json is written (6 stubs + inspection),
-or **6** when the worker has no S3 client / staging missing-source continuation / etc.
-The script prints output types so you can verify ``media_inspection`` is present.
+when R2 is configured and media_inspection.json is written (6 transcript-linked artefacts
++ inspection), or **6** when the worker has no S3 client / staging missing-source continuation / etc.
+Chapters, fact_sheet, faqs, metadata, and hosted_manifest are **deterministically derived**
+from raw_transcript + media_inspection (v0 — no LLM). The script validates ``derived_from``,
+``outputs_available`` on hosted_manifest, and that chapter titles reflect transcript text.
 """
 
 from __future__ import annotations
@@ -90,6 +92,19 @@ def _get(
         return e.code, e.read()
     except OSError as e:
         return -1, repr(e).encode("utf-8")
+
+
+def _fetch_output_json(outputs: list[dict[str, Any]], output_type: str) -> tuple[int, dict[str, Any] | None]:
+    o = next((x for x in outputs if x.get("type") == output_type), None)
+    if not o:
+        return 404, None
+    url = o.get("download_url") or ""
+    if not url:
+        return 400, None
+    code, body = _get_url(url, timeout=60.0)
+    if code != 200:
+        return code, None
+    return 200, json.loads(body.decode("utf-8"))
 
 
 def _put_bytes(url: str, body: bytes, content_type: str, *, timeout: float = 300.0) -> Tuple[int, str]:
@@ -308,6 +323,50 @@ def main() -> int:
         f"PASS: transcript v0 source={tdoc.get('source')} "
         f"has_audio_stream={ae.get('has_audio_stream')} has_audio={ae.get('has_audio')}",
     )
+
+    def _assert_derived() -> int:
+        for typ in ("chapters", "fact_sheet", "faqs", "metadata", "hosted_manifest"):
+            c, doc = _fetch_output_json(outs, typ)
+            if c != 200 or not doc:
+                print(f"FAIL: could not fetch JSON for {typ} http={c}", file=sys.stderr)
+                return 1
+            if doc.get("derived_from") not in ("transcript_stub", "openai_whisper"):
+                print(f"FAIL: {typ} missing/invalid derived_from: {doc.get('derived_from')!r}", file=sys.stderr)
+                return 1
+        ch_doc = _fetch_output_json(outs, "chapters")[1]
+        assert ch_doc is not None
+        if not ch_doc.get("chapters"):
+            print("FAIL: chapters.json has empty chapters", file=sys.stderr)
+            return 1
+        segs = tdoc.get("segments") or []
+        seg0_text = (segs[0].get("text") or "").strip()
+        title0 = (ch_doc["chapters"][0].get("title") or "").strip()
+        if seg0_text:
+            first = (seg0_text.split() or [""])[0].lower()
+            if len(first) > 1 and first not in title0.lower():
+                print(
+                    f"FAIL: chapter title should reflect first segment; title={title0!r} segment0={seg0_text[:80]!r}",
+                    file=sys.stderr,
+                )
+                return 1
+        hm = _fetch_output_json(outs, "hosted_manifest")[1]
+        assert hm is not None
+        oa = hm.get("outputs_available") or []
+        if "raw_transcript" not in oa or "chapters" not in oa:
+            print(f"FAIL: hosted_manifest.outputs_available incomplete: {oa!r}", file=sys.stderr)
+            return 1
+        if not hm.get("transcript_meta") or hm["transcript_meta"].get("source") != tdoc.get("source"):
+            print("FAIL: hosted_manifest.transcript_meta.source mismatch", file=sys.stderr)
+            return 1
+        if not hm.get("media_meta") or hm["media_meta"].get("audio_codec") is None:
+            print("FAIL: hosted_manifest.media_meta missing audio_codec", file=sys.stderr)
+            return 1
+        print("PASS: transcript-derived outputs (chapters, fact_sheet, faqs, metadata, hosted_manifest) validated.")
+        return 0
+
+    if _assert_derived():
+        return 1
+
     return 0
 
 
