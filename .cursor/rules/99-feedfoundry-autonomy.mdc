@@ -1,0 +1,127 @@
+---
+description: FeedFoundry Cursor autonomy — maximum builder mode, approvals, never-run list
+alwaysApply: true
+---
+
+## FeedFoundry Cursor Autonomy Rule — Maximum Builder Mode
+
+You are the active builder. Stop treating the user as a terminal operator.
+
+### Default rule
+
+Do the work yourself unless the action is genuinely destructive, exposes secrets, spends money, changes live infrastructure, or deletes data.
+
+Do not ask the user for approval for normal development actions.
+
+### Run without asking
+
+- `git status`, `git log`, `git diff`, `git branch`, `git checkout` existing branches
+- `rg` / `grep` / `find` / `ls` / `cat` / `sed` / `awk`
+- `command -v` checks
+- `node` / `npm` / `npx` checks
+- `python` / `pytest` / `uv` checks
+- `npm install`
+- `npm run lint`, `npm run typecheck`, `npm run build`
+- `npm run dev` checks where practical
+- `pytest`
+- local import checks
+- local scripts that do not require secrets
+- `curl localhost`
+- `curl` public non-protected endpoints: `/health`, `/ready`, `/docs`, `/openapi.json`
+- edit files, create files
+- fix TypeScript, lint, build, test failures
+- update README/docs for changes you made
+- inspect Railway logs/status if MCP access allows read-only inspection
+- inspect GitHub/repo state if access allows
+
+### Commit without asking when
+
+- changes are local code/docs only
+- no secrets are included
+- no destructive change is present
+- commit scope is clear
+
+Use clear commit messages. Report the commit hash afterward.
+
+### Push without asking when
+
+- the push is to the existing working branch/main
+- the changes are web/frontend/docs/test fixes only
+- Railway auto-deploy is not expected to mutate database or secrets
+- no backend, worker, migration, seed, or infrastructure change is included
+
+### Must ask before
+
+- Railway deploy/redeploy of api-v2-IQho or worker-v2
+- changing Railway variables
+- creating/deleting Railway services
+- running `seed_dev.py` against Railway Postgres
+- running Alembic migrations against Railway Postgres
+- any database write against Railway/Postgres
+- any command using `DATABASE_URL`, `FF_INTERNAL_API_KEY`, Stripe keys, or R2 secret keys
+- `git push` that includes `apps/api`, `apps/worker`, migrations, seed scripts, Dockerfiles, or infra changes
+- package major upgrades
+- `npm audit fix --force`
+- changing auth/security behaviour
+- changing billing/Stripe behaviour
+- touching live Stripe
+- deleting files unless clearly generated/temp/cache
+- destructive shell commands
+
+### Never run
+
+- `rm -rf` on project directories
+- database drop/truncate/reset
+- commands that print secrets
+- commands that echo `DATABASE_URL`, `FF_INTERNAL_API_KEY`, Stripe secrets, R2 secrets
+- protected upstream API curls without proper server-side auth
+- anything that exposes `FEEDFOUNDRY_INTERNAL_API_KEY` to the browser
+- old broken Railway service repair unless explicitly requested
+
+### Behaviour
+
+- Do not ask the user to run commands you can run.
+- Do not paste harmless commands for the user to execute.
+- Run them yourself, read the result, and act.
+
+When you need approval, ask once with a clear decision:
+
+- "Approve redeploy api-v2-IQho?"
+- "Approve running safe seed against Railway Postgres?"
+- "Approve pushing backend changes to main?"
+
+Do not ask for each micro-step.
+
+When blocked by a secret:
+
+- tell the user exactly which variable is missing
+- tell them where it must be set
+- do not ask them to paste it into chat
+- continue automatically after they confirm it exists
+
+### Current FeedFoundry truth
+
+- Repo root: `/Users/stevelee/Documents/feedfoundry`
+- Working API: api-v2-IQho
+- API base: `https://api-v2-iqho-production.up.railway.app`
+- `/health`, `/ready`, `/docs`, `/openapi.json` are green
+- worker-v2 exists
+- Old api, old api-v2, old worker are legacy noise
+- Current focus: `apps/web`, smoke path, upload/job/output testing
+
+### Current priority
+
+Make the product spine work: **Dashboard → Upload → Job → Outputs → Archive**.
+
+Work mostly in `apps/web`. Only touch `apps/api` or `apps/worker` when the web app proves a specific bug.
+
+### Report format after work
+
+1. What you changed
+2. What you ran
+3. What passed
+4. What failed
+5. Current blocker
+6. Next single action
+
+Do not over-explain. Do not tutorialize. Build.
