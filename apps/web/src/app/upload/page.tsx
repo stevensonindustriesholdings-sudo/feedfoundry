@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { browserPost } from "@/lib/client/api";
+import { browserGet, browserPost } from "@/lib/client/api";
 import { getOrgId, setLatestJobId } from "@/lib/org-storage";
-import type { CreateJobResponse, PresignUploadResponse } from "@/lib/types";
+import type { CreateJobResponse, JobOutputsResponse, JobStatusResponse, PresignUploadResponse } from "@/lib/types";
 import { OUTPUT_OPTIONS } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import type { ClientError } from "@/lib/errors";
@@ -24,6 +24,10 @@ export default function UploadPage() {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [job, setJob] = useState<CreateJobResponse | null>(null);
   const [debug, setDebug] = useState<DebugState | null>(null);
+  const [liveJob, setLiveJob] = useState<JobStatusResponse | null>(null);
+  const [liveOutputs, setLiveOutputs] = useState<JobOutputsResponse | null>(null);
+  const [livePollErr, setLivePollErr] = useState<string | null>(null);
+  const [isLocal, setIsLocal] = useState(false);
 
   const toggleOutput = (id: string) => {
     setOutputs((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -32,6 +36,9 @@ export default function UploadPage() {
   const runUpload = useCallback(async () => {
     setError(null);
     setJob(null);
+    setLiveJob(null);
+    setLiveOutputs(null);
+    setLivePollErr(null);
     setPresign(null);
     setUploadPct(null);
     setDebug(null);
@@ -62,6 +69,8 @@ export default function UploadPage() {
     try {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", pr.data.upload_url);
+      const putContentType = file.type || "application/octet-stream";
+      xhr.setRequestHeader("Content-Type", putContentType);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadPct(Math.round((100 * e.loaded) / e.total));
       };
@@ -110,12 +119,55 @@ export default function UploadPage() {
     }
     setJob(jr.data);
     setLatestJobId(jr.data.job_id);
-    setStatus("Job is queued. Track it under Jobs.");
+    setStatus("Job queued — watching pipeline below.");
     setDebug({ presign: pr.data, job: jr.data });
   }, [file, mediaType, outputs, confirmJob]);
 
+  useEffect(() => {
+    const h = window.location.hostname;
+    setIsLocal(h === "localhost" || h === "127.0.0.1");
+  }, []);
+
+  useEffect(() => {
+    const id = job?.job_id;
+    if (!id) return;
+    let cancelled = false;
+    const tick = async () => {
+      const jr = await browserGet<JobStatusResponse>(`/v1/jobs/${encodeURIComponent(id)}`, getOrgId());
+      if (cancelled) return;
+      if (!jr.ok) {
+        setLivePollErr(jr.error.message);
+        return;
+      }
+      setLivePollErr(null);
+      setLiveJob(jr.data);
+      const done = ["complete", "failed", "cancelled"].includes(jr.data.status);
+      if (done) {
+        const or = await browserGet<JobOutputsResponse>(`/v1/jobs/${encodeURIComponent(id)}/outputs`, getOrgId());
+        if (!cancelled && or.ok) setLiveOutputs(or.data);
+      }
+    };
+    void tick();
+    const iv = setInterval(() => void tick(), 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [job?.job_id]);
+
   return (
     <div className="space-y-10">
+      {isLocal ? (
+        <div className="max-w-3xl rounded-2xl border border-accent/25 bg-accent/5 px-5 py-4 text-sm text-zinc-300">
+          <strong className="text-zinc-100">Local dev</strong> — this UI talks to your FeedFoundry API through{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-xs text-accent">/api/ff</code>. Set{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-xs">FEEDFOUNDRY_API_BASE_URL</code> and{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-xs">FEEDFOUNDRY_INTERNAL_API_KEY</code> in{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-xs">apps/web/.env.local</code>, then{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-xs">npm run dev</code> here (port 3000).
+        </div>
+      ) : null}
+
       <header className="max-w-2xl space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Ingest</p>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Upload</h1>
@@ -254,6 +306,58 @@ export default function UploadPage() {
                   Outputs (when complete) →
                 </Link>
               </div>
+            </div>
+          ) : null}
+
+          {job && liveJob ? (
+            <div className="rounded-2xl border border-surface-border bg-surface-raised/50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-accent">Live pipeline</p>
+              <p className="mt-2 text-sm text-zinc-300">
+                <span className="font-mono text-zinc-100">{liveJob.job_id}</span> ·{" "}
+                <span className="text-zinc-400">{liveJob.current_stage || "—"}</span>
+              </p>
+              <div className="mt-3 flex items-baseline justify-between text-xs text-zinc-500">
+                <span>Progress</span>
+                <span className="font-mono text-zinc-300">{liveJob.progress_percent ?? 0}%</span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-border">
+                <div
+                  className={`h-full rounded-full ${
+                    liveJob.status === "failed" ? "bg-danger/80" : "bg-accent"
+                  } transition-all`}
+                  style={{ width: `${Math.min(100, Math.max(0, liveJob.progress_percent ?? 0))}%` }}
+                />
+              </div>
+              <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">Status · {liveJob.status}</p>
+              {livePollErr ? (
+                <p className="mt-2 text-xs text-red-300" role="alert">
+                  {livePollErr}
+                </p>
+              ) : null}
+              {liveOutputs && liveOutputs.outputs.length > 0 ? (
+                <div className="mt-4 border-t border-surface-border pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    Outputs ({liveOutputs.outputs.length})
+                  </p>
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-zinc-400">
+                    {liveOutputs.outputs.map((o) => (
+                      <li key={o.type}>
+                        <a
+                          href={o.download_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent no-underline hover:underline"
+                        >
+                          {o.title}
+                        </a>{" "}
+                        <span className="text-zinc-600">({o.type})</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : liveJob.status === "complete" ? (
+                <p className="mt-3 text-xs text-zinc-500">Waiting for output links…</p>
+              ) : null}
             </div>
           ) : null}
           <p className="text-xs leading-relaxed text-zinc-600">
