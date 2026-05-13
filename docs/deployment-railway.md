@@ -1,6 +1,6 @@
 # Railway deployment (FeedFoundry)
 
-This document describes a **staging-oriented** Railway layout: API, worker, and Postgres. The commercial model remains **annual hosted archive access** plus **processing credits** (not monthly subscription SaaS).
+This document describes a **staging-oriented** Railway layout: API, worker, and Postgres. The commercial model remains **annual hosted archive access** plus a **processing allowance** (internal ledger + Stripe env names may still say `CREDITS`; customer copy should not). Not monthly subscription SaaS.
 
 ## Connect GitHub so Railway builds this monorepo (not a bare image)
 
