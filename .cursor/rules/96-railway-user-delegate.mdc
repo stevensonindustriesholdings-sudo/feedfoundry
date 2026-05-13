@@ -1,0 +1,30 @@
+---
+description: Standing delegation — agent drives Railway for api-v2-IQho / worker-v2 without per-turn relay
+alwaysApply: true
+---
+
+## Railway delegate (user-authorized lane)
+
+The user **delegates Railway instruction to the builder** so they are not the messenger between Cursor and Railway.
+
+### Allowed without a fresh approval each time
+
+- **`railway` CLI**: status, `whoami`, `link`, `service`, `deployment list`, **`redeploy`**, **`logs`** (read-only), `variables` **names only** (do not paste values into chat).
+- **Trigger redeploy** for production services **`api-v2-IQho`** and **`worker-v2`**, from the linked Railway project when the CLI is logged in.
+- **Dashboard links** (deployments, logs, variables UI) when the CLI is missing or non-interactive.
+
+### Still requires an explicit user instruction in the same thread
+
+- **Changing** Railway variables or secrets (describe what to set; user applies in UI unless they say to set a named variable).
+- **`railway run`** / any **Postgres write**: `seed_dev.py`, Alembic upgrade, truncate, destructive SQL.
+- **Creating / deleting** Railway services or databases.
+- **Printing** `DATABASE_URL`, internal API keys, Stripe, or R2 secrets.
+
+### Operating habit
+
+- Prefer **one** `railway redeploy --service <name>` after the matching **`git push`** to `main` when the deployable image should track the repo.
+- If the CLI is not installed or not linked, say so once and give **exact** Railway UI steps or links; do not loop on “please run this.”
+
+### Conflict
+
+If another rule says “ask before redeploy,” **this file wins** for **`api-v2-IQho`** and **`worker-v2`** only.
