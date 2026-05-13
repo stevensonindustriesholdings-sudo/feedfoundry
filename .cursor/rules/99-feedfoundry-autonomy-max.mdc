@@ -26,6 +26,23 @@ The objective is to keep FeedFoundry moving, not to narrate every command.
 - **Worker:** worker-v2
 - Old api, old api-v2, old worker are legacy noise unless explicitly mentioned.
 
+## Railway — HARD SERVICE ALLOWLIST (mutations)
+
+**Only these two services may receive deploy/redeploy/`up`/variable writes from the agent:**
+
+- `api-v2-IQho`
+- `worker-v2`
+
+**NEVER mutate** (no `redeploy`, `up`, `deploy`, `variables set`, delete, scale, or “fix” deploys) **unless Steve explicitly names that service in chat:**
+
+- `api` (legacy)
+- `api-v2` (legacy)
+- `worker` (legacy)
+- `migrate` (unless Steve explicitly says to use it)
+- `Postgres-RhhK`, `Redis-GvIO`, buckets, volumes — **read/logs/inspect OK**; **no env writes or destructive DB ops** without Steve’s explicit instruction for that resource.
+
+Wasting Railway/build minutes or credits on legacy services is forbidden.
+
 ## Current priority
 
 Make the FeedFoundry product spine work:

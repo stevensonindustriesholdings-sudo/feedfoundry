@@ -9,6 +9,12 @@ CLI is installed; user is logged in. **Default: read-only inspection** via Railw
 
 **Current product focus:** `apps/web` and Day Two smoke path. **Do not** inspect or repair legacy Railway services (old api, old api-v2, old worker).
 
+### HARD mutation allowlist
+
+**Only** `api-v2-IQho` and `worker-v2` may receive `redeploy` / `up` / `deploy` / `variables set` from the agent.
+
+**NEVER mutate** legacy **`api`**, **`api-v2`**, **`worker`**, or **`migrate`** (or DB/redis/buckets) unless Steve **explicitly names that exact service or resource** in chat. Read-only logs/status for any service is OK.
+
 ### Allowed without asking (read-only)
 
 - `railway status`, `railway whoami` (no token paste)
@@ -17,20 +23,12 @@ CLI is installed; user is logged in. **Default: read-only inspection** via Railw
 - Confirm **service names** exist and whether **`api-v2-IQho`** and **`worker-v2`** have healthy / running deployments
 - Public-equivalent checks: still prefer `curl` `/health`, `/ready` on the public API URL when that answers the question
 
-### Ask before (mutates Railway or production runtime)
+### Mutations (align with `99-feedfoundry-autonomy-max.mdc`)
 
-- `railway up`
-- `railway deploy` / **`railway redeploy`** (including **`api-v2-IQho`** and **`worker-v2`**)
-- `railway variables` **set** / any env or secret change
-- Creating or deleting Railway services
-- Migrations or **seed scripts** against Railway Postgres
-- Anything else that **mutates Railway state** or production data
+- **Allowlist only:** `api-v2-IQho`, `worker-v2` — deploy/redeploy/`up`/`variables set` per autonomy max (not per-turn asks).
+- **Everyone else:** **do not mutate** (including `api`, `api-v2`, `worker`, `migrate`, Postgres, Redis, buckets) unless Steve **explicitly names** that service/resource.
 
 ### Never
 
 - Echo or paste secret values (`DATABASE_URL`, internal API keys, Stripe, R2) into chat or logs shared with the user
 - Use read-only inspection as cover to change infra without the ask list above
-
-### Scope
-
-Only **api-v2-IQho** (API) and **worker-v2** (worker) are in scope for deploy/redeploy questions. Other services: do not touch unless the user explicitly names them.
