@@ -1,4 +1,4 @@
-"""Add joboutputtype enum value media_inspection (PostgreSQL only).
+"""Add joboutputtype enum value MEDIA_INSPECTION (PostgreSQL only).
 
 Revision ID: 004_media_inspection_enum
 Revises: 003_worker_heartbeats
@@ -49,9 +49,10 @@ BEGIN
     FROM pg_enum e
     JOIN pg_type t2 ON e.enumtypid = t2.oid
     WHERE t2.typname = typ
-      AND e.enumlabel = 'media_inspection'
+      AND e.enumlabel = 'MEDIA_INSPECTION'
   ) THEN
-    EXECUTE format('ALTER TYPE %I ADD VALUE %L', typ, 'media_inspection');
+    -- Match existing labels (e.g. RAW_TRANSCRIPT); SQLModel persists Enum member names.
+    EXECUTE format('ALTER TYPE %I ADD VALUE %L', typ, 'MEDIA_INSPECTION');
   END IF;
 END
 $outer$;
