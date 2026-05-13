@@ -44,6 +44,9 @@ export type JobStatusResponse = {
   estimated_credits: number | null;
   reserved_credits: number | null;
   actual_credits_so_far?: number | null;
+  /** Present when API exposes failure details (optional until backend extends OpenAPI). */
+  failure_code?: string | null;
+  failure_message?: string | null;
 };
 
 export type OutputItemResponse = {

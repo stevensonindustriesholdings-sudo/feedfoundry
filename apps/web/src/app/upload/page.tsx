@@ -8,6 +8,7 @@ import type { CreateJobResponse, JobOutputsResponse, JobStatusResponse, PresignU
 import { OUTPUT_OPTIONS } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import type { ClientError } from "@/lib/errors";
+import { formatApiUnitsAsProcessing } from "@/lib/processing-display";
 
 type DebugState = Record<string, unknown>;
 
@@ -98,7 +99,7 @@ export default function UploadPage() {
     setDebug({ presign: pr.data, uploaded: true });
 
     if (!confirmJob) {
-      setStatus("Media received. Enable job confirmation below to reserve processing credits and queue work.");
+      setStatus("Media received. Enable job confirmation below to reserve processing time and queue work.");
       return;
     }
 
@@ -169,11 +170,13 @@ export default function UploadPage() {
       ) : null}
 
       <header className="max-w-2xl space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Ingest</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Upload</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Creator ingest</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Upload video or audio</h1>
         <p className="text-sm leading-relaxed text-zinc-500">
-          Send media to your creator archive storage, then optionally create a job. Job creation reserves{" "}
-          <strong className="font-medium text-zinc-400">processing credits</strong> against your account.
+          Bring files from your own library (no link scraping). We store them in your archive bucket, then optionally run
+          a processing job. Confirming a job reserves{" "}
+          <strong className="font-medium text-zinc-400">processing time</strong> up front so work never starts without
+          allowance.
         </p>
       </header>
 
@@ -247,8 +250,9 @@ export default function UploadPage() {
               className="mt-0.5 rounded border-surface-border"
             />
             <span>
-              I confirm that creating a processing job will <strong className="text-zinc-300">reserve processing credits</strong>{" "}
-              for this run.
+              I confirm that creating a processing job will{" "}
+              <strong className="text-zinc-300">reserve processing time</strong> for this run (released or settled when
+              the job finishes).
             </span>
           </label>
           <button
@@ -296,7 +300,8 @@ export default function UploadPage() {
               <p className="font-semibold text-zinc-100">Job queued</p>
               <p className="mt-2 font-mono text-sm text-zinc-300">{job.job_id}</p>
               <p className="mt-2 text-sm text-zinc-400">
-                Estimated credits {job.estimated_credits} · Reserved {job.reserved_credits}
+                Estimated {formatApiUnitsAsProcessing(job.estimated_credits)} · Reserved{" "}
+                {formatApiUnitsAsProcessing(job.reserved_credits)}
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Link href="/jobs" className="text-sm font-semibold text-accent no-underline hover:underline">
@@ -361,8 +366,8 @@ export default function UploadPage() {
             </div>
           ) : null}
           <p className="text-xs leading-relaxed text-zinc-600">
-            Early access: enrichments and output bundles may expand over time; your annual hosted archive and credit
-            behaviour follow the active product policy.
+            Early access: enrichments and bundles may expand over time. Annual hosted archive access and processing-time
+            rules follow the active product policy.
           </p>
         </div>
       </div>

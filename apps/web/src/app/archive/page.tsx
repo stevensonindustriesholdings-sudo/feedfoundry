@@ -15,7 +15,7 @@ export default function ArchivePage() {
     setData(null);
     const base = process.env.NEXT_PUBLIC_FEEDFOUNDRY_API_BASE_URL?.replace(/\/$/, "");
     if (!base) {
-      setErr("NEXT_PUBLIC_FEEDFOUNDRY_API_BASE_URL is not set.");
+      setErr("Set NEXT_PUBLIC_FEEDFOUNDRY_API_BASE_URL for public manifest fetches from the browser.");
       return;
     }
     const slug = asset.replace(/\.json$/i, "");
@@ -35,11 +35,17 @@ export default function ArchivePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-semibold text-zinc-50">Archive</h1>
-      <p className="max-w-2xl text-sm text-zinc-400">
-        Public hosted manifest JSON — fetched directly from the API (no internal key). Use creator and asset slugs.
-      </p>
+    <div className="space-y-8">
+      <header className="max-w-2xl space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Public archive</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-50">Hosted manifest</h1>
+        <p className="text-sm leading-relaxed text-zinc-400">
+          Read the stable JSON manifest for a published episode — canonical title, summary, chapter pointers, and
+          links your site or agents can trust. Fetched directly from the API base URL (no internal proxy key). Path:{" "}
+          <span className="font-mono text-zinc-500">GET /v1/manifests/{"{creator}"}/{"{slug}"}.json</span>.
+        </p>
+      </header>
+
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <label htmlFor="creator" className="text-sm font-medium text-zinc-300">
@@ -78,11 +84,12 @@ export default function ArchivePage() {
         </p>
       ) : null}
       {data && !err ? (
-        <div className="rounded-xl border border-surface-border bg-surface-raised/40 p-4">
-          <h2 className="text-sm font-medium text-zinc-400">Summary</h2>
-          <p className="mt-1 text-lg text-zinc-100">
-            {(data.canonical_title as string) || (data.summary as string)?.slice?.(0, 120) || "Manifest loaded"}
+        <div className="rounded-xl border border-surface-border bg-surface-raised/40 p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Preview</h2>
+          <p className="mt-2 text-lg font-medium text-zinc-100">
+            {(data.canonical_title as string) || (typeof data.summary === "string" ? data.summary.slice(0, 120) : "Manifest loaded")}
           </p>
+          <p className="mt-2 text-xs text-zinc-500">Full JSON is in the debug panel below for inspection.</p>
         </div>
       ) : null}
       <DebugPanel title="Manifest JSON" json={data} />

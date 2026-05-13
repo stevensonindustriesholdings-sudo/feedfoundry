@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-geist-sans" });
 export const metadata: Metadata = {
   title: "FeedFoundry — Creator archive, preserved and enriched",
   description:
-    "Annual hosted archive access and credit-based processing for transcripts, chapters, factsheets, FAQs, metadata, CTAs, and hosted manifests.",
+    "Annual hosted archive access and metered processing time for transcripts, chapters, factsheets, FAQs, metadata, CTAs, hosted manifests, and exports.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

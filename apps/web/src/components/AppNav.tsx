@@ -8,7 +8,7 @@ const links = [
   { href: "/pricing", label: "Pricing" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/upload", label: "Upload" },
-  { href: "/jobs", label: "Jobs" },
+  { href: "/jobs", label: "Processing" },
   { href: "/outputs", label: "Outputs" },
   { href: "/archive", label: "Archive" },
   { href: "/system", label: "System" },
@@ -25,6 +25,7 @@ export function AppNav() {
         <nav className="flex flex-wrap gap-x-1 gap-y-2 text-sm" aria-label="Main">
           {links.map(({ href, label }) => {
             const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+            const isSystem = href === "/system";
             return (
               <Link
                 key={href}
@@ -32,10 +33,13 @@ export function AppNav() {
                 className={
                   active
                     ? "rounded-md bg-surface-border px-2 py-1 text-zinc-100 no-underline"
-                    : "rounded-md px-2 py-1 text-zinc-300 no-underline hover:bg-surface-border/60 hover:text-zinc-100"
+                    : isSystem
+                      ? "rounded-md px-2 py-1 text-zinc-500 no-underline hover:bg-surface-border/60 hover:text-zinc-400"
+                      : "rounded-md px-2 py-1 text-zinc-300 no-underline hover:bg-surface-border/60 hover:text-zinc-100"
                 }
               >
                 {label}
+                {isSystem ? <span className="ml-1 text-[10px] font-normal uppercase text-zinc-600">dev</span> : null}
               </Link>
             );
           })}
