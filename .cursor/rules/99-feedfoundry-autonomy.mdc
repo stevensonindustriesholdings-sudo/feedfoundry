@@ -33,7 +33,7 @@ Do not ask the user for approval for normal development actions.
 - update README/docs for changes you made
 - inspect Railway logs/status if MCP access allows read-only inspection
 - inspect GitHub/repo state if access allows
-- **Railway redeploy / logs for `api-v2-IQho` and `worker-v2`** per `.cursor/rules/96-railway-user-delegate.mdc`
+- **read-only** Railway CLI / MCP inspection per `.cursor/rules/96-railway-user-delegate.mdc`
 
 ### Commit without asking when
 
@@ -53,7 +53,7 @@ Use clear commit messages. Report the commit hash afterward.
 
 ### Must ask before
 
-- Railway deploy/redeploy of services **other than** `api-v2-IQho` and `worker-v2` (those use rule 96)
+- Railway **`up`**, **`deploy`**, **`redeploy`** (including **`api-v2-IQho`** and **`worker-v2`**), **`variables set`**, or any mutation of Railway state (read-only lane: rule 96)
 - changing Railway variables
 - creating/deleting Railway services
 - running `seed_dev.py` against Railway Postgres
@@ -87,6 +87,8 @@ Use clear commit messages. Report the commit hash afterward.
 
 When you need approval, ask once with a clear decision:
 
+- "Approve redeploy api-v2-IQho?"
+- "Approve redeploy worker-v2?"
 - "Approve running safe seed against Railway Postgres?"
 - "Approve pushing backend changes to main?"
 

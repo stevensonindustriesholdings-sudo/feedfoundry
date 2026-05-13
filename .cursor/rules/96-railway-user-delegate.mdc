@@ -1,30 +1,36 @@
 ---
-description: Standing delegation — agent drives Railway for api-v2-IQho / worker-v2 without per-turn relay
+description: Railway CLI/MCP — read-only by default; mutations require explicit approval
 alwaysApply: true
 ---
 
-## Railway delegate (user-authorized lane)
+## Railway CLI / MCP (FeedFoundry)
 
-The user **delegates Railway instruction to the builder** so they are not the messenger between Cursor and Railway.
+CLI is installed; user is logged in. **Default: read-only inspection** via Railway CLI or Railway MCP.
 
-### Allowed without a fresh approval each time
+**Current product focus:** `apps/web` and Day Two smoke path. **Do not** inspect or repair legacy Railway services (old api, old api-v2, old worker).
 
-- **`railway` CLI**: status, `whoami`, `link`, `service`, `deployment list`, **`redeploy`**, **`logs`** (read-only), `variables` **names only** (do not paste values into chat).
-- **Trigger redeploy** for production services **`api-v2-IQho`** and **`worker-v2`**, from the linked Railway project when the CLI is logged in.
-- **Dashboard links** (deployments, logs, variables UI) when the CLI is missing or non-interactive.
+### Allowed without asking (read-only)
 
-### Still requires an explicit user instruction in the same thread
+- `railway status`, `railway whoami` (no token paste)
+- `railway logs` (tail/follow for diagnosis; do not dump secrets)
+- Service / deployment inspection: list services, deployment status, which release is live
+- Confirm **service names** exist and whether **`api-v2-IQho`** and **`worker-v2`** have healthy / running deployments
+- Public-equivalent checks: still prefer `curl` `/health`, `/ready` on the public API URL when that answers the question
 
-- **Changing** Railway variables or secrets (describe what to set; user applies in UI unless they say to set a named variable).
-- **`railway run`** / any **Postgres write**: `seed_dev.py`, Alembic upgrade, truncate, destructive SQL.
-- **Creating / deleting** Railway services or databases.
-- **Printing** `DATABASE_URL`, internal API keys, Stripe, or R2 secrets.
+### Ask before (mutates Railway or production runtime)
 
-### Operating habit
+- `railway up`
+- `railway deploy` / **`railway redeploy`** (including **`api-v2-IQho`** and **`worker-v2`**)
+- `railway variables` **set** / any env or secret change
+- Creating or deleting Railway services
+- Migrations or **seed scripts** against Railway Postgres
+- Anything else that **mutates Railway state** or production data
 
-- Prefer **one** `railway redeploy --service <name>` after the matching **`git push`** to `main` when the deployable image should track the repo.
-- If the CLI is not installed or not linked, say so once and give **exact** Railway UI steps or links; do not loop on “please run this.”
+### Never
 
-### Conflict
+- Echo or paste secret values (`DATABASE_URL`, internal API keys, Stripe, R2) into chat or logs shared with the user
+- Use read-only inspection as cover to change infra without the ask list above
 
-If another rule says “ask before redeploy,” **this file wins** for **`api-v2-IQho`** and **`worker-v2`** only.
+### Scope
+
+Only **api-v2-IQho** (API) and **worker-v2** (worker) are in scope for deploy/redeploy questions. Other services: do not touch unless the user explicitly names them.
