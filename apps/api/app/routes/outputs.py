@@ -25,6 +25,7 @@ _OUTPUT_TITLES: dict[str, str] = {
     "faqs": "FAQs",
     "hosted_manifest": "Hosted Manifest",
     "export_bundle": "Export bundle",
+    "media_inspection": "Media inspection",
 }
 
 

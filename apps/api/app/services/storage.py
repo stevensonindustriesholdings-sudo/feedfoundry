@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import urllib.parse
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import boto3
@@ -127,6 +129,35 @@ def presign_get_object(
         ExpiresIn=expires,
         HttpMethod="GET",
     )
+
+
+def download_object_to_tempfile(
+    *,
+    bucket: str,
+    key: str,
+    settings=None,
+    suffix: str = "",
+) -> str:
+    """Stream-download an object to a named temp file. Caller must delete the path.
+
+    Uses ``download_fileobj`` so large objects are not buffered entirely in RAM.
+    """
+    client = _s3_client(settings)
+    if client is None:
+        raise RuntimeError("storage_not_configured")
+    ext = suffix or Path(_safe_filename(key)).suffix or ".bin"
+    fd, path = tempfile.mkstemp(suffix=ext)
+    os.close(fd)
+    try:
+        with open(path, "wb") as f:
+            client.download_fileobj(bucket, key, f)
+    except Exception:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+    return path
 
 
 def head_object_exists(*, bucket: str, key: str, settings=None) -> bool:
