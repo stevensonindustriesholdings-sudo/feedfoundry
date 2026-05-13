@@ -86,6 +86,8 @@ def run_audio_extraction(
     if not ffprobe_has_audio_stream(input_path, ffprobe_binary=fp):
         base_meta["success"] = True
         base_meta["skipped_reason"] = "no_audio_stream"
+        base_meta["has_audio"] = False
+        base_meta["source_media_basename"] = os.path.basename(input_path)
         return None, base_meta
 
     fd, out_path = tempfile.mkstemp(suffix=".wav", prefix="ff_audio_")
@@ -105,6 +107,7 @@ def run_audio_extraction(
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "").strip()[:2000]
             base_meta["error"] = f"ffmpeg_exit_{proc.returncode}: {err}"
+            base_meta["has_audio"] = False
             try:
                 os.unlink(out_path)
             except OSError:
@@ -117,6 +120,10 @@ def run_audio_extraction(
         base_meta["output_bytes"] = size
         base_meta["sample_rate_hz"] = 16000
         base_meta["channels"] = 1
+        base_meta["has_audio"] = True
+        base_meta["has_audio_stream"] = True
+        base_meta["source_media_basename"] = os.path.basename(input_path)
+        base_meta["extracted_audio_basename"] = os.path.basename(out_path)
         return out_path, base_meta
     except Exception as exc:
         base_meta["error"] = str(exc)[:2000]

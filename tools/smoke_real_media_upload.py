@@ -14,6 +14,9 @@ Environment:
 Optional:
   SMOKE_POLL_SECONDS — default 5
   SMOKE_JOB_TIMEOUT_SECONDS — default 600
+  SMOKE_REQUIRE_AUDIO=1 — assert media_inspection.audio_codec present, transcript audio_extraction
+    shows extracted audio (has_audio / has_audio_stream), metadata fields, and source is
+    transcript_stub unless SMOKE_ALLOW_OPENAI_TRANSCRIPT=1 (worker has OpenAI path).
 
 Successful completion expects worker-v2 to finish the job. Output count is **7**
 when R2 is configured and media_inspection.json is written (6 stubs + inspection),
@@ -259,7 +262,52 @@ def main() -> int:
     if "schema_version" not in ae or "has_audio_stream" not in ae:
         print("FAIL: audio_extraction metadata incomplete", file=sys.stderr)
         return 1
-    print(f"PASS: transcript v0 source={tdoc.get('source')} has_audio={ae.get('has_audio_stream')}")
+
+    req_audio = os.environ.get("SMOKE_REQUIRE_AUDIO", "").strip().lower() in ("1", "true", "yes")
+    if req_audio:
+        if doc.get("audio_codec") in (None, ""):
+            print(
+                "FAIL: SMOKE_REQUIRE_AUDIO but media_inspection.audio_codec is null/empty",
+                file=sys.stderr,
+            )
+            return 1
+        if not ae.get("has_audio_stream"):
+            print("FAIL: SMOKE_REQUIRE_AUDIO: audio_extraction.has_audio_stream must be true", file=sys.stderr)
+            return 1
+        if ae.get("has_audio") is not True:
+            print("FAIL: SMOKE_REQUIRE_AUDIO: audio_extraction.has_audio must be true", file=sys.stderr)
+            return 1
+        for k in ("source_duration_seconds", "output_format", "output_bytes", "ffmpeg_command"):
+            if k not in ae or ae.get(k) in (None, ""):
+                print(f"FAIL: SMOKE_REQUIRE_AUDIO: audio_extraction.{k} missing or empty", file=sys.stderr)
+                return 1
+        if not ae.get("source_media_basename"):
+            print("FAIL: SMOKE_REQUIRE_AUDIO: audio_extraction.source_media_basename missing", file=sys.stderr)
+            return 1
+        if not ae.get("extracted_audio_basename"):
+            print(
+                "FAIL: SMOKE_REQUIRE_AUDIO: audio_extraction.extracted_audio_basename missing",
+                file=sys.stderr,
+            )
+            return 1
+        allow_openai = os.environ.get("SMOKE_ALLOW_OPENAI_TRANSCRIPT", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if not allow_openai and tdoc.get("source") != "transcript_stub":
+            print(
+                f"FAIL: expected transcript source transcript_stub, got {tdoc.get('source')!r} "
+                "(set SMOKE_ALLOW_OPENAI_TRANSCRIPT=1 if worker OpenAI is intentional)",
+                file=sys.stderr,
+            )
+            return 1
+        print("PASS: SMOKE_REQUIRE_AUDIO checks ok")
+
+    print(
+        f"PASS: transcript v0 source={tdoc.get('source')} "
+        f"has_audio_stream={ae.get('has_audio_stream')} has_audio={ae.get('has_audio')}",
+    )
     return 0
 
 
