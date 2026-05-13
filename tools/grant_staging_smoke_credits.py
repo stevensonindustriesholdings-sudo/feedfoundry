@@ -11,7 +11,7 @@ Environment:
   DATABASE_URL — required (same Postgres as API / worker; not printed by this script)
   APP_ENV — must be ``staging``, ``development``, or ``dev`` (unset is treated as ``development``)
   STAGING_SMOKE_TOPUP_ORG_ID — default ``org_dev_demo``
-  STAGING_SMOKE_TOPUP_CREDITS — default ``10000``
+  STAGING_SMOKE_TOPUP_CREDITS — default ``10000`` (whole processing minutes; legacy env name)
   STAGING_SMOKE_TOPUP_IDEMPOTENCY_KEY — default ``ff:smoke:sample_pack_topup:v1``
 
 Usage (from repo root, after ``export DATABASE_URL=...`` and ``export APP_ENV=staging``):
@@ -87,7 +87,7 @@ def main() -> int:
         )
         session.commit()
 
-    print(f"OK organisation={org_id} balance_available={snap.balance_available}")
+    print(f"OK organisation={org_id} processing_minutes_available={snap.processing_minutes_available}")
     return 0
 
 

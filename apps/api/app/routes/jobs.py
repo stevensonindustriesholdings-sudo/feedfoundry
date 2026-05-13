@@ -6,7 +6,7 @@ from app.db import get_session
 from app.models import Job, JobStatus, MediaAsset, MediaAssetStatus
 from app.schemas.api import CreateJobRequest, CreateJobResponse, JobStatusResponse
 from app.services import annual_access as annual_access_svc
-from app.services.credit_ledger import CreditLedgerError, ledger_reserve_key, reserve_credits
+from app.services.credit_ledger import CreditLedgerError, ledger_reserve_key, reserve_processing_minutes
 from app.services import job_estimator
 from app.settings import get_settings
 
@@ -36,7 +36,7 @@ def create_job(
             detail="media_asset_invalid_state",
         )
 
-    est = job_estimator.estimate_job_credits(
+    est = job_estimator.estimate_job_processing_minutes(
         routing_path=get_settings().ai_routing_config_path,
         requested_outputs=body.requested_outputs,
         media_duration_seconds=ma.duration_seconds,
@@ -45,16 +45,18 @@ def create_job(
     job = Job(
         organisation_id=organisation_id,
         media_asset_id=ma.id,
-        status=JobStatus.CREATED,
+        media_kind=ma.media_type,
+        source_content_type=ma.upload_content_type,
+        status=JobStatus.UPLOADED,
         requested_outputs_json=list(body.requested_outputs),
         distribution_targets_json=list(body.distribution_targets or []),
-        estimated_credits=est,
+        estimated_processing_minutes=est,
     )
     session.add(job)
     session.flush()
 
     try:
-        reserve_credits(
+        reserve_processing_minutes(
             session,
             organisation_id=organisation_id,
             job_id=job.id,
@@ -62,7 +64,7 @@ def create_job(
             idempotency_key=ledger_reserve_key(job.id),
         )
     except CreditLedgerError as e:
-        if str(e) == "insufficient_available_credits":
+        if str(e) == "insufficient_processing_allowance":
             session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -71,11 +73,11 @@ def create_job(
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="credit_reservation_failed",
+            detail="processing_allowance_reservation_failed",
         )
 
     job.status = JobStatus.QUEUED
-    job.reserved_credits = est
+    job.reserved_processing_minutes = est
     session.add(job)
     session.commit()
     session.refresh(job)
@@ -83,6 +85,8 @@ def create_job(
     return CreateJobResponse(
         job_id=job.id,
         status=job.status.value,
+        estimated_processing_minutes=est,
+        reserved_processing_minutes=est,
         estimated_credits=est,
         reserved_credits=est,
     )
@@ -98,12 +102,16 @@ def get_job(
     job = session.get(Job, job_id)
     if not job or job.organisation_id != organisation_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found")
+    charged = job.actual_processing_minutes_charged
     return JobStatusResponse(
         job_id=job.id,
         status=job.status.value,
         progress_percent=job.progress_percent,
         current_stage=job.current_stage,
-        estimated_credits=job.estimated_credits,
-        reserved_credits=job.reserved_credits,
-        actual_credits_so_far=job.actual_credits,
+        estimated_processing_minutes=job.estimated_processing_minutes,
+        reserved_processing_minutes=job.reserved_processing_minutes,
+        actual_processing_minutes_charged=charged,
+        estimated_credits=job.estimated_processing_minutes,
+        reserved_credits=job.reserved_processing_minutes,
+        actual_credits_so_far=charged,
     )

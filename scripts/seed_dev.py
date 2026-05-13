@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bootstrap dev org, user, annual hosted-access entitlement, credit wallet, and demo media asset.
+Bootstrap dev org, user, annual hosted-access entitlement, processing-allowance wallet, and demo media asset.
 
 Usage (from repo root):
   export DATABASE_URL=postgresql+psycopg://...
@@ -39,8 +39,8 @@ ORG_ID = "org_dev_demo"
 USER_ID = "user_dev_demo"
 ASSET_ID = "ma_dev_demo"
 
-# Matches creator_core included_annual_credits from ai-routing.yaml (300)
-STARTING_CREDITS = 300
+# Matches creator_core annual included allowance from ai-routing.yaml (300 minutes)
+STARTING_PROCESSING_MINUTES = 300
 
 
 def seed() -> None:
@@ -100,7 +100,7 @@ def seed() -> None:
                     period_start=now,
                     period_end=period_end,
                     hosting_until=period_end,
-                    included_credits=STARTING_CREDITS,
+                    included_processing_minutes_annual=STARTING_PROCESSING_MINUTES,
                 )
             )
         else:
@@ -114,17 +114,17 @@ def seed() -> None:
                 aa.period_start = now
             if aa.hosting_until is None or aa.hosting_until < now:
                 aa.hosting_until = aa.period_end
-            if aa.included_credits < STARTING_CREDITS:
-                aa.included_credits = STARTING_CREDITS
+            if aa.included_processing_minutes_annual < STARTING_PROCESSING_MINUTES:
+                aa.included_processing_minutes_annual = STARTING_PROCESSING_MINUTES
             session.add(aa)
 
         wallet = session.exec(select(CreditWallet).where(CreditWallet.organisation_id == ORG_ID)).first()
         if wallet is None:
             wallet = CreditWallet(
                 organisation_id=ORG_ID,
-                balance_available=STARTING_CREDITS,
-                balance_reserved=0,
-                balance_spent_lifetime=0,
+                processing_minutes_available=STARTING_PROCESSING_MINUTES,
+                processing_minutes_reserved=0,
+                processing_minutes_spent_lifetime=0,
             )
             session.add(wallet)
             session.flush()
@@ -134,9 +134,9 @@ def seed() -> None:
                     wallet_id=wallet.id,
                     job_id=None,
                     type=CreditTransactionType.ANNUAL_GRANT,
-                    amount=STARTING_CREDITS,
-                    balance_after=STARTING_CREDITS,
-                    memo="seed_dev annual hosted access credit grant",
+                    amount=STARTING_PROCESSING_MINUTES,
+                    processing_minutes_available_after=STARTING_PROCESSING_MINUTES,
+                    memo="seed_dev annual hosted access processing allowance grant",
                     idempotency_key="ff:seed_dev:annual_grant",
                 )
             )
@@ -147,8 +147,8 @@ def seed() -> None:
                     CreditTransaction.idempotency_key == "ff:seed_dev:annual_grant"
                 )
             ).first()
-            if wallet.balance_available == 0 and not has_grant:
-                wallet.balance_available = STARTING_CREDITS
+            if wallet.processing_minutes_available == 0 and not has_grant:
+                wallet.processing_minutes_available = STARTING_PROCESSING_MINUTES
                 session.add(wallet)
                 session.flush()
                 session.add(
@@ -157,9 +157,9 @@ def seed() -> None:
                         wallet_id=wallet.id,
                         job_id=None,
                         type=CreditTransactionType.ANNUAL_GRANT,
-                        amount=STARTING_CREDITS,
-                        balance_after=STARTING_CREDITS,
-                        memo="seed_dev annual hosted access credit grant",
+                        amount=STARTING_PROCESSING_MINUTES,
+                        processing_minutes_available_after=STARTING_PROCESSING_MINUTES,
+                        memo="seed_dev annual hosted access processing allowance grant",
                         idempotency_key="ff:seed_dev:annual_grant",
                     )
                 )
@@ -186,7 +186,7 @@ def seed() -> None:
         print("seed_ok")
         print(f"  organisation_id={ORG_ID} slug=demo-creator")
         print(f"  user_id={USER_ID}")
-        print(f"  wallet_credits_available ~ {STARTING_CREDITS} (after grant idempotency)")
+        print(f"  wallet_processing_minutes_available ~ {STARTING_PROCESSING_MINUTES} (after grant idempotency)")
         print(f"  demo_media_asset_id={ASSET_ID} manifest slugs demo-creator / episode-001")
 
 

@@ -40,10 +40,10 @@ def test_seed_data_model_sqlite(db_session: Session):
             period_start=now,
             period_end=now + timedelta(days=365),
             hosting_until=now + timedelta(days=365),
-            included_credits=300,
+            included_processing_minutes_annual=300,
         )
     )
-    w = CreditWallet(organisation_id=org.id, balance_available=300)
+    w = CreditWallet(organisation_id=org.id, processing_minutes_available=300)
     db_session.add(w)
     db_session.flush()
     db_session.add(
@@ -52,7 +52,7 @@ def test_seed_data_model_sqlite(db_session: Session):
             wallet_id=w.id,
             type=CreditTransactionType.ANNUAL_GRANT,
             amount=300,
-            balance_after=300,
+            processing_minutes_available_after=300,
             memo="grant",
             idempotency_key="ff:seed_dev:annual_grant",
         )
@@ -61,4 +61,4 @@ def test_seed_data_model_sqlite(db_session: Session):
 
     assert db_session.get(Organisation, "org_dev_demo").slug == "demo-creator"
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org.id)).one()
-    assert wallet.balance_available == 300
+    assert wallet.processing_minutes_available == 300

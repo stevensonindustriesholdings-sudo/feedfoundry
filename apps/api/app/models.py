@@ -32,6 +32,8 @@ class AnnualAccessStatus(str, Enum):
 
 
 class CreditTransactionType(str, Enum):
+    """Internal ledger line types (amounts are whole processing minutes)."""
+
     PURCHASE = "purchase"
     ANNUAL_GRANT = "annual_grant"
     RESERVE = "reserve"
@@ -59,18 +61,12 @@ class MediaAssetStatus(str, Enum):
 
 
 class JobStatus(str, Enum):
-    CREATED = "created"
-    ESTIMATING = "estimating"
-    AWAITING_CREDIT_RESERVATION = "awaiting_credit_reservation"
+    """Customer-visible job lifecycle (pipeline detail lives in ``current_stage``)."""
+
+    UPLOADED = "uploaded"
     QUEUED = "queued"
-    PROBING = "probing"
-    EXTRACTING_AUDIO = "extracting_audio"
-    CHUNKING = "chunking"
-    TRANSCRIBING = "transcribing"
-    GENERATING_OUTPUTS = "generating_outputs"
-    QA_VALIDATING = "qa_validating"
-    EXPORTING = "exporting"
-    COMPLETE = "complete"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -124,7 +120,7 @@ class AnnualAccess(SQLModel, table=True):
     period_start: datetime
     period_end: datetime
     hosting_until: datetime
-    included_credits: int = 0
+    included_processing_minutes_annual: int = 0
     stripe_checkout_session_id: Optional[str] = None
     stripe_subscription_id: Optional[str] = None
     stripe_payment_intent_id: Optional[str] = None
@@ -133,16 +129,18 @@ class AnnualAccess(SQLModel, table=True):
 
 
 class CreditWallet(SQLModel, table=True):
+    """Wallet row: integer **whole processing minutes** (internal ledger, not customer “credits”)."""
+
     __tablename__ = "credit_wallets"
     __table_args__ = (UniqueConstraint("organisation_id", name="uq_wallet_org"),)
 
     id: str = Field(default_factory=lambda: new_id("wal"), primary_key=True)
     organisation_id: str = Field(foreign_key="organisations.id", index=True)
-    balance_available: int = 0
-    balance_reserved: int = 0
-    balance_spent_lifetime: int = 0
-    balance_expired_lifetime: int = 0
-    currency: str = Field(default="FF_CREDIT")
+    processing_minutes_available: int = 0
+    processing_minutes_reserved: int = 0
+    processing_minutes_spent_lifetime: int = 0
+    processing_minutes_expired_lifetime: int = 0
+    currency: str = Field(default="FF_PROCESSING_MINUTE")
     updated_at: datetime = Field(default_factory=utcnow)
 
 
@@ -155,7 +153,7 @@ class CreditTransaction(SQLModel, table=True):
     job_id: Optional[str] = Field(default=None, foreign_key="jobs.id", index=True)
     type: CreditTransactionType
     amount: int
-    balance_after: int
+    processing_minutes_available_after: int
     memo: Optional[str] = None
     expires_at: Optional[datetime] = None
     stripe_reference: Optional[str] = None
@@ -171,6 +169,7 @@ class MediaAsset(SQLModel, table=True):
     uploaded_by_user_id: Optional[str] = Field(default=None, foreign_key="users.id")
     original_filename: str
     media_type: MediaType
+    upload_content_type: Optional[str] = Field(default=None, max_length=255)
     storage_source_key: str
     duration_seconds: Optional[float] = None
     file_size_bytes: Optional[int] = None
@@ -188,7 +187,9 @@ class Job(SQLModel, table=True):
     id: str = Field(default_factory=lambda: new_id("job"), primary_key=True)
     organisation_id: str = Field(foreign_key="organisations.id", index=True)
     media_asset_id: str = Field(foreign_key="media_assets.id", index=True)
-    status: JobStatus = Field(default=JobStatus.CREATED)
+    media_kind: MediaType = Field(default=MediaType.OTHER)
+    source_content_type: Optional[str] = Field(default=None, max_length=255)
+    status: JobStatus = Field(default=JobStatus.UPLOADED)
     requested_outputs_json: List[Any] = Field(default_factory=list, sa_column=Column(JSON))
     distribution_targets_json: List[Any] = Field(
         default_factory=list,
@@ -196,11 +197,13 @@ class Job(SQLModel, table=True):
     )
     progress_percent: int = 0
     current_stage: Optional[str] = None
-    estimated_credits: Optional[int] = None
-    reserved_credits: Optional[int] = None
-    actual_credits: Optional[int] = None
+    estimated_processing_minutes: Optional[int] = None
+    reserved_processing_minutes: Optional[int] = None
+    actual_processing_minutes_charged: Optional[int] = None
     failure_code: Optional[str] = None
+    failure_reason: Optional[str] = None
     failure_message: Optional[str] = None
+    error_log_storage_key: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -214,6 +217,7 @@ class JobOutput(SQLModel, table=True):
     job_id: str = Field(foreign_key="jobs.id", index=True)
     organisation_id: str = Field(foreign_key="organisations.id", index=True)
     output_type: JobOutputType
+    schema_version: str = Field(default="1.0", max_length=16)
     storage_key: Optional[str] = None
     json_payload: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     markdown_payload: Optional[str] = None
@@ -234,7 +238,7 @@ class AIUsageLog(SQLModel, table=True):
     input_tokens_estimated: Optional[int] = None
     output_tokens_estimated: Optional[int] = None
     cost_estimate_usd: Optional[float] = None
-    credits_debited: Optional[int] = None
+    processing_minutes_logged: Optional[int] = None
     latency_ms: Optional[int] = None
     rate_limit_remaining_requests: Optional[int] = None
     rate_limit_remaining_tokens: Optional[int] = None

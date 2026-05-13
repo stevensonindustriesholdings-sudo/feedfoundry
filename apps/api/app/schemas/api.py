@@ -34,8 +34,16 @@ class CreateJobRequest(BaseModel):
 class CreateJobResponse(BaseModel):
     job_id: str
     status: str
-    estimated_credits: int
-    reserved_credits: int
+    estimated_processing_minutes: int
+    reserved_processing_minutes: int
+    estimated_credits: int = Field(
+        deprecated=True,
+        description="Alias of estimated_processing_minutes for legacy clients.",
+    )
+    reserved_credits: int = Field(
+        deprecated=True,
+        description="Alias of reserved_processing_minutes for legacy clients.",
+    )
 
 
 class JobStatusResponse(BaseModel):
@@ -43,9 +51,12 @@ class JobStatusResponse(BaseModel):
     status: str
     progress_percent: int
     current_stage: Optional[str]
-    estimated_credits: Optional[int]
-    reserved_credits: Optional[int]
-    actual_credits_so_far: Optional[int] = None
+    estimated_processing_minutes: Optional[int] = None
+    reserved_processing_minutes: Optional[int] = None
+    actual_processing_minutes_charged: Optional[int] = None
+    estimated_credits: Optional[int] = Field(default=None, deprecated=True)
+    reserved_credits: Optional[int] = Field(default=None, deprecated=True)
+    actual_credits_so_far: Optional[int] = Field(default=None, deprecated=True)
 
 
 class OutputItemResponse(BaseModel):
@@ -63,7 +74,14 @@ class JobOutputsResponse(BaseModel):
 class AccountCreditsResponse(BaseModel):
     annual_access_status: str
     hosting_until: Optional[str]
-    credits_available: int
-    credits_reserved: int
-    credits_spent_lifetime: int
-    next_credit_expiry: Optional[str]
+    processing_minutes_available: int
+    processing_minutes_reserved: int
+    processing_minutes_spent_lifetime: int
+    next_processing_period_end: Optional[str] = Field(
+        default=None,
+        description="Calendar end of current annual access period (processing allowance anchor).",
+    )
+    credits_available: int = Field(deprecated=True)
+    credits_reserved: int = Field(deprecated=True)
+    credits_spent_lifetime: int = Field(deprecated=True)
+    next_credit_expiry: Optional[str] = Field(default=None, deprecated=True)

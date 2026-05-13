@@ -32,10 +32,10 @@ def _bootstrap_org(session: Session, org_id: str, *, with_aa: bool = True, credi
                 period_start=now,
                 period_end=now + timedelta(days=365),
                 hosting_until=now + timedelta(days=365),
-                included_credits=credits,
+                included_processing_minutes_annual=credits,
             )
         )
-    w = CreditWallet(organisation_id=org_id, balance_available=credits)
+    w = CreditWallet(organisation_id=org_id, processing_minutes_available=credits)
     session.add(w)
     session.commit()
 
@@ -120,11 +120,12 @@ def test_job_creation_reserves_credits(api_client, db_session: Session):
     )
     assert r.status_code == 200
     body = r.json()
+    assert body["reserved_processing_minutes"] == body["estimated_processing_minutes"]
     assert body["reserved_credits"] == body["estimated_credits"]
     job_id = body["job_id"]
 
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == "org_ok")).one()
-    assert wallet.balance_reserved >= body["reserved_credits"]
+    assert wallet.processing_minutes_reserved >= body["reserved_processing_minutes"]
 
     job = db_session.get(Job, job_id)
     assert job.status == JobStatus.QUEUED
@@ -149,7 +150,7 @@ def test_manifest_endpoint_returns_payload(api_client, db_session: Session):
         Job(
             organisation_id=org_id,
             media_asset_id="ma_m",
-            status=JobStatus.COMPLETE,
+            status=JobStatus.COMPLETED,
             requested_outputs_json=["hosted_manifest"],
         )
     )

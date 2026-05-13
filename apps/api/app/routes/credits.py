@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -43,12 +45,19 @@ def get_credits(
             detail="annual_access_not_configured",
         )
     period_end = _calendar_day_iso(aa.period_end)
+    avail = wallet.processing_minutes_available
+    res = wallet.processing_minutes_reserved
+    spent = wallet.processing_minutes_spent_lifetime
     body = AccountCreditsResponse(
         annual_access_status=_enum_str(aa.status),
         hosting_until=_calendar_day_iso(aa.hosting_until),
-        credits_available=wallet.balance_available,
-        credits_reserved=wallet.balance_reserved,
-        credits_spent_lifetime=wallet.balance_spent_lifetime,
+        processing_minutes_available=avail,
+        processing_minutes_reserved=res,
+        processing_minutes_spent_lifetime=spent,
+        next_processing_period_end=period_end,
+        credits_available=avail,
+        credits_reserved=res,
+        credits_spent_lifetime=spent,
         next_credit_expiry=period_end,
     )
     session.commit()
