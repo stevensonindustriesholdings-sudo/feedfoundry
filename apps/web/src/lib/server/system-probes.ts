@@ -50,7 +50,7 @@ export async function probeProxyAccountCredits(): Promise<SimpleProbe> {
   if (isDevAccountCreditsMockEnabled()) {
     const body = mockAccountCreditsJson();
     return {
-      url: "GET /v1/account/credits (dev mock — FEEDFOUNDRY_DEV_MOCK_ACCOUNT_CREDITS)",
+      url: "GET /v1/account/credits (dev mock — default in next dev)",
       httpStatus: 200,
       ok: true,
       snippet: trimSnippet(body),

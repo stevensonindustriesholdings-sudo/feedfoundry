@@ -7,6 +7,8 @@ alwaysApply: true
 
 You are the active builder. Do not make Steve a clipboard operator.
 
+**Never ask Steve** to run curl, npm, edit `.env.local`, or paste terminal output for routine smoke or local checks — **you run them** and report results only.
+
 ## Default behaviour
 
 **ACT FIRST. REPORT AFTER.**

@@ -1,6 +1,7 @@
 /**
  * Dev-only mock for GET /v1/account/credits — bypasses Railway when the real endpoint is broken.
- * Never enable in production deployments.
+ * In `next dev`, mock is ON by default (no env to set). Opt out: FEEDFOUNDRY_USE_LIVE_ACCOUNT_CREDITS=1
+ * Never used in production (`next start` / NODE_ENV=production).
  */
 
 function truthyEnv(v: string | undefined): boolean {
@@ -8,9 +9,11 @@ function truthyEnv(v: string | undefined): boolean {
   return s === "1" || s === "true" || s === "yes";
 }
 
-/** Active only in `next dev` (NODE_ENV=development) with explicit flag. */
+/** Default ON in `next dev`; opt out with FEEDFOUNDRY_USE_LIVE_ACCOUNT_CREDITS=1 */
 export function isDevAccountCreditsMockEnabled(): boolean {
-  return process.env.NODE_ENV === "development" && truthyEnv(process.env.FEEDFOUNDRY_DEV_MOCK_ACCOUNT_CREDITS);
+  if (process.env.NODE_ENV !== "development") return false;
+  if (truthyEnv(process.env.FEEDFOUNDRY_USE_LIVE_ACCOUNT_CREDITS)) return false;
+  return true;
 }
 
 /** JSON body matching FastAPI `AccountCreditsResponse`. */
