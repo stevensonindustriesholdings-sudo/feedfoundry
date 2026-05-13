@@ -143,3 +143,21 @@ def test_ctas_document_shape() -> None:
     title = out["chapters"][0]["title"].lower()
     assert "transcript_stub_v0" not in title
     assert "real episode" in title or "content" in title
+
+
+def test_fact_sheet_strip_internal_stub_noise() -> None:
+    tr = {
+        "schema_version": "1.0",
+        "source": "transcript_stub",
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "transcript_stub_v0 job=j9 media=m9 (no external ASR) We archive creator episodes for search.",
+            }
+        ],
+    }
+    out = build_fact_sheet_from_transcript(tr, None, derived_from="transcript_stub")
+    joined = " ".join(f["statement"] for f in out["facts"]).lower()
+    assert "transcript_stub_v0" not in joined
+    assert "archive" in joined or "creator" in joined
