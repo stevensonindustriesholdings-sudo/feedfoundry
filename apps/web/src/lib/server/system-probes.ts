@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 
 import { getServerConfig } from "./config";
+import { isDevAccountCreditsMockEnabled, mockAccountCreditsJson } from "./dev-mock-credits";
 import { forwardToFeedFoundry } from "./feedfoundry-upstream";
 
 export type SimpleProbe = {
@@ -46,6 +47,15 @@ export async function probePublicReady(publicBase: string): Promise<SimpleProbe>
  */
 export async function probeProxyAccountCredits(): Promise<SimpleProbe> {
   const url = "GET /v1/account/credits (server credentials, same as /api/ff proxy)";
+  if (isDevAccountCreditsMockEnabled()) {
+    const body = mockAccountCreditsJson();
+    return {
+      url: "GET /v1/account/credits (dev mock — FEEDFOUNDRY_DEV_MOCK_ACCOUNT_CREDITS)",
+      httpStatus: 200,
+      ok: true,
+      snippet: trimSnippet(body),
+    };
+  }
   const h = await headers();
   const orgHint = h.get("x-feedfoundry-org-id")?.trim() || null;
   try {

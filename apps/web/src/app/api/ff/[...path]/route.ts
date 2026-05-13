@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerConfig } from "@/lib/server/config";
+import { isDevAccountCreditsMockEnabled, mockAccountCreditsJson } from "@/lib/server/dev-mock-credits";
 import { forwardToFeedFoundry } from "@/lib/server/feedfoundry-upstream";
 
 const ORG_CLIENT_HEADER = "x-feedfoundry-org-id";
@@ -32,14 +33,28 @@ export async function GET(
   request: NextRequest,
   ctx: { params: Promise<{ path?: string[] }> },
 ) {
-  return handle(request, ctx, "GET");
+  try {
+    return await handle(request, ctx, "GET");
+  } catch (e) {
+    return NextResponse.json(
+      { detail: "proxy_handler_error", message: (e as Error).message },
+      { status: 502 },
+    );
+  }
 }
 
 export async function POST(
   request: NextRequest,
   ctx: { params: Promise<{ path?: string[] }> },
 ) {
-  return handle(request, ctx, "POST");
+  try {
+    return await handle(request, ctx, "POST");
+  } catch (e) {
+    return NextResponse.json(
+      { detail: "proxy_handler_error", message: (e as Error).message },
+      { status: 502 },
+    );
+  }
 }
 
 async function handle(
@@ -63,6 +78,14 @@ async function handle(
 
   const path = upstreamPath(pathSegments);
   const orgHeader = request.headers.get(ORG_CLIENT_HEADER);
+
+  if (method === "GET" && path === "/v1/account/credits" && isDevAccountCreditsMockEnabled()) {
+    return new NextResponse(mockAccountCreditsJson(), {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
   const { defaultOrgId } = getServerConfig();
   const orgId = orgHeader?.trim() || defaultOrgId;
 
@@ -74,18 +97,48 @@ async function handle(
     body = await request.text();
   }
 
-  const upstream = await forwardToFeedFoundry(path, {
-    method,
-    body,
-    orgId,
-    headers: Object.keys(headers).length ? headers : undefined,
-  });
+  let upstream: Response;
+  try {
+    upstream = await forwardToFeedFoundry(path, {
+      method,
+      body,
+      orgId,
+      headers: Object.keys(headers).length ? headers : undefined,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { detail: "proxy_upstream_unreachable", message: (e as Error).message },
+      { status: 502 },
+    );
+  }
 
   const resHeaders = new Headers();
   const ct = upstream.headers.get("content-type");
   if (ct) resHeaders.set("content-type", ct);
 
   const text = await upstream.text();
+
+  if (!upstream.ok) {
+    try {
+      JSON.parse(text);
+      return new NextResponse(text, {
+        status: upstream.status,
+        headers: resHeaders,
+      });
+    } catch {
+      const wrapped = JSON.stringify({
+        detail: "upstream_non_json_body",
+        message: text.slice(0, 2000),
+      });
+      const errHeaders = new Headers();
+      errHeaders.set("content-type", "application/json; charset=utf-8");
+      return new NextResponse(wrapped, {
+        status: upstream.status,
+        headers: errHeaders,
+      });
+    }
+  }
+
   return new NextResponse(text, {
     status: upstream.status,
     headers: resHeaders,
