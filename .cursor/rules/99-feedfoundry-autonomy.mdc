@@ -1,6 +1,6 @@
 ---
 description: FeedFoundry Cursor autonomy — maximum builder mode, approvals, never-run list
-alwaysApply: true
+alwaysApply: false
 ---
 
 ## FeedFoundry Cursor Autonomy Rule — Maximum Builder Mode

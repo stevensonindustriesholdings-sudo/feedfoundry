@@ -1,0 +1,181 @@
+---
+description: FeedFoundry Autonomy Max — act first, minimal reporting, wide staging approval
+alwaysApply: true
+---
+
+# FeedFoundry Autonomy Max Rule
+
+You are the active builder. Do not make Steve a clipboard operator.
+
+## Default behaviour
+
+**ACT FIRST. REPORT AFTER.**
+
+Do not ask permission for normal development, testing, committing, pushing, redeploying known staging services, or running safe project scripts.
+
+The objective is to keep FeedFoundry moving, not to narrate every command.
+
+## Repo root
+
+`/Users/stevelee/Documents/feedfoundry`
+
+## Current working services
+
+- **API:** api-v2-IQho
+- **API base:** `https://api-v2-iqho-production.up.railway.app`
+- **Worker:** worker-v2
+- Old api, old api-v2, old worker are legacy noise unless explicitly mentioned.
+
+## Current priority
+
+Make the FeedFoundry product spine work:
+
+**Dashboard → Upload → Job → Outputs → Archive**
+
+## Main working area
+
+- `apps/web` first
+- `apps/api` only if the web app proves a specific backend bug
+- `apps/worker` only if a real job proves a specific worker bug
+
+## Product constraints
+
+- Do not use Base44.
+- Do not change the commercial model.
+- Do not add monthly subscription language.
+- Do not add real AI/transcription until explicitly requested.
+
+### Commercial language
+
+**Use:** annual hosted archive, annual archive access, processing credits, credit packs, creator archive, preserved and enriched episodes.
+
+**Never use:** monthly subscription, SaaS tiers, unlimited processing, AI magic.
+
+---
+
+## FULLY APPROVED ACTIONS — DO WITHOUT ASKING
+
+You may run, edit, fix, commit, push, and redeploy for the normal FeedFoundry staging workflow.
+
+### Local repo / inspection
+
+- `git status`, `git log`, `git diff`, `git branch`, `git checkout` existing branches
+- `rg` / `grep` / `find` / `ls` / `cat` / `sed` / `awk`
+- `command -v` checks
+- reading files
+- creating/editing project files
+
+### Frontend
+
+- `npm install`
+- `npm run lint`, `npm run typecheck`, `npm run build`
+- `npm run dev` checks where practical
+- fixing TypeScript/lint/build/runtime errors
+- adding missing local dependencies
+- committing and pushing `apps/web` changes
+
+### Python / backend local checks
+
+- `python` / `python3` / `uv` checks
+- `pytest`
+- local import checks
+- fixing specific `apps/api` bugs proven by the web smoke path
+- fixing specific `apps/worker` bugs proven by worker logs/job smoke path
+
+### Git
+
+- `git add`, `git commit`, `git push` when the change is directly related to the current FeedFoundry sprint and does not contain secrets.
+
+### Railway read actions
+
+- `railway status`, `railway logs`, service/status inspection, deployment log inspection
+- checking service names, **api-v2-IQho** status, **worker-v2** status
+
+### Railway staging actions
+
+Redeploy without asking:
+
+- **api-v2-IQho**
+- **worker-v2**
+
+Run without asking if required:
+
+- `scripts/seed_dev.py` (safe seed for `org_dev_demo`)
+- `alembic upgrade head` (schema current / non-destructive upgrade path)
+
+**Conditions for seed/migration:**
+
+- use existing Railway Postgres (via linked `railway run` or env already present)
+- never print `DATABASE_URL` or secrets
+- no drop/truncate/reset; upgrade-only / idempotent where applicable
+
+### Curl / testing
+
+- `curl localhost`
+- public API: `/health`, `/ready`, `/docs`, `/openapi.json`
+- local Next.js proxy endpoints
+- do not ask Steve to run these manually
+
+---
+
+## HARD STOP — ASK STEVE FIRST
+
+1. **Destructive data:** drop DB, truncate, reset DB, delete prod/staging data, destructive migration, irreversible bulk delete.
+2. **Secret exposure:** printing `DATABASE_URL`, `FF_INTERNAL_API_KEY`, Stripe/R2 secrets; exposing server secrets to browser/client code.
+3. **Money / live billing:** live Stripe, real charges, live products/prices, refunds, live payment config.
+4. **Infrastructure deletion:** deleting Railway services, Postgres, Redis, buckets, GitHub repo, remote branches.
+5. **Dangerous shell:** `rm -rf` on project directories, broad destructive `chmod`/`chown`, killing unrelated processes, wiping `node_modules` unless necessary.
+
+---
+
+## DO NOT ASK FOR THESE
+
+Do not ask before: typecheck, build, lint, pytest, `git commit`, `git push`, redeploy **api-v2-IQho**, redeploy **worker-v2**, safe `seed_dev.py`, `alembic upgrade head`, Railway logs, local proxy, public `/health` or `/ready`.
+
+If Cursor’s UI asks for permission for a harmless command, proceed under this rule.
+
+---
+
+## REPORTING STYLE
+
+Keep reports short. Use this format only:
+
+```
+Changed:
+- ...
+
+Ran:
+- ...
+
+Result:
+- ...
+
+Blocker:
+- ...
+
+Next:
+- ...
+```
+
+Do not write essays. Do not tutorialize. Do not restate the whole project. Do not paste full logs unless they contain the actual error.
+
+**Successful command:** `PASS: <command>`
+
+**Failed command:** `FAIL: <command>` / First real error: / Fix applied or next action:
+
+---
+
+## CURRENT DAY TWO GOAL
+
+1. Local web app runs.
+2. `/system` shows `/health` and `/ready` green.
+3. `/dashboard` loads `org_dev_demo` credits.
+4. `/upload` presigns a sample video.
+5. Browser uploads to signed URL.
+6. Job is created.
+7. `/jobs` polls the job.
+8. **worker-v2** processes the job or gives a clear blocker.
+9. `/outputs` shows generated outputs.
+10. `/archive` can fetch a manifest if available.
+
+**Build. Do not babysit. Do not ask Steve to do your terminal work.**

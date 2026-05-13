@@ -1,6 +1,6 @@
 ---
 description: Railway CLI/MCP — read-only by default; mutations require explicit approval
-alwaysApply: true
+alwaysApply: false
 ---
 
 ## Railway CLI / MCP (FeedFoundry)

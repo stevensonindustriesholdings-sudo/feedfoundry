@@ -1,6 +1,6 @@
 ---
 description: Token/credit conservation — terse builder output, batched checks, approval gates
-alwaysApply: true
+alwaysApply: false
 ---
 
 ## Credit-conservation mode
