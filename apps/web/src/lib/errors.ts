@@ -42,7 +42,7 @@ export function mapUpstreamError(status: number, detail: string | undefined): Cl
     return {
       code: "insufficient_credits",
       status,
-      message: "Not enough processing credits for this job.",
+      message: "Not enough included processing time for this job.",
       detail,
     };
   }

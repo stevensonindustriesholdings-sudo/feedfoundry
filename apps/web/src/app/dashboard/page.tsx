@@ -8,6 +8,7 @@ import type { AccountCreditsResponse } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import { SmokePathCard } from "@/components/SmokePathCard";
 import type { ClientError } from "@/lib/errors";
+import { formatApiUnitsAsProcessing } from "@/lib/processing-display";
 
 function errorMessage(err: ClientError): string {
   return err.message;
@@ -36,7 +37,10 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold text-zinc-50">Dashboard</h1>
-          <p className="mt-1 text-sm text-zinc-400">Annual archive access and processing credits for your org.</p>
+          <p className="mt-1 max-w-xl text-sm text-zinc-400">
+            Annual archive access and remaining processing time for your organisation. Balances come from{" "}
+            <span className="font-mono text-zinc-500">GET /v1/account/credits</span>.
+          </p>
         </div>
         <Link
           href="/upload"
@@ -73,14 +77,29 @@ export default function DashboardPage() {
       ) : null}
 
       {data ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <StatCard label="Access status" value={data.annual_access_status} />
-          <StatCard label="Credits available" value={String(data.credits_available)} tone="ok" />
-          <StatCard label="Credits reserved" value={String(data.credits_reserved)} tone="pending" />
-          <StatCard label="Credits spent (lifetime)" value={String(data.credits_spent_lifetime)} />
-          <StatCard label="Hosting until" value={data.hosting_until ?? "—"} />
-          <StatCard label="Next credit expiry" value={data.next_credit_expiry ?? "—"} />
-        </div>
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StatCard label="Annual access" value={data.annual_access_status} />
+            <StatCard
+              label="Processing time available"
+              value={formatApiUnitsAsProcessing(data.credits_available)}
+              tone="ok"
+            />
+            <StatCard
+              label="Held for active jobs"
+              value={formatApiUnitsAsProcessing(data.credits_reserved)}
+              tone="pending"
+            />
+            <StatCard label="Lifetime processing used" value={formatApiUnitsAsProcessing(data.credits_spent_lifetime)} />
+            <StatCard label="Hosting until" value={data.hosting_until ?? "—"} />
+            <StatCard label="Next balance event" value={data.next_credit_expiry ?? "—"} />
+          </div>
+          <p className="text-xs text-zinc-600">
+            TODO(api-contract): expose explicit processing seconds on{" "}
+            <span className="font-mono">GET /v1/account/credits</span> so the UI can drop the 1 unit = 1 minute
+            assumption.
+          </p>
+        </>
       ) : null}
 
       <SmokePathCard />
@@ -89,7 +108,15 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ label, value, tone }: { label: string; value: string; tone?: "ok" | "pending" }) {
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "ok" | "pending";
+}) {
   const border =
     tone === "ok" ? "border-accent/40" : tone === "pending" ? "border-warn/40" : "border-surface-border";
   return (

@@ -41,7 +41,7 @@ export function SmokePathCard() {
     setBusy(true);
     const r = await browserGet<AccountCreditsResponse>("/v1/account/credits", getOrgId());
     if (r.ok) {
-      pushLog("GET /v1/account/credits", true, `available=${r.data.credits_available}`);
+      pushLog("GET /v1/account/credits", true, `available_units=${r.data.credits_available} (UI maps to processing time)`);
       setLastPayload(r.data);
     } else pushLog("GET /v1/account/credits", false, r.error.message);
     setBusy(false);
@@ -75,7 +75,8 @@ export function SmokePathCard() {
     <section className="rounded-xl border border-surface-border bg-surface-raised/30 p-5">
       <h2 className="text-lg font-semibold text-zinc-100">Backend smoke checks</h2>
       <p className="mt-1 text-sm text-zinc-400">
-        Staging helpers — each step is manual. Full upload and job creation (credits) stay on the Upload page.
+        Staging helpers — each step is manual. Full upload and job creation (processing reservation) stay on the Upload
+        page.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <button
@@ -100,7 +101,7 @@ export function SmokePathCard() {
           onClick={() => void runCredits()}
           className="rounded-md border border-surface-border px-3 py-1.5 text-sm text-zinc-200 hover:bg-surface-border/40 disabled:opacity-50"
         >
-          credits
+          account / allowance
         </button>
         <button
           type="button"
