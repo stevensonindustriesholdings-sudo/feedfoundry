@@ -1,0 +1,27 @@
+---
+description: Token/credit conservation — terse builder output, batched checks, approval gates
+alwaysApply: true
+---
+
+## Credit-conservation mode
+
+1. Do not restate project background unless the user asks.
+2. Do not paste full command output unless it contains the actual error.
+3. When running commands, cap output with `tail`/`head` where practical.
+4. For successful commands, report one line only: `PASS: <command>`
+5. For failed commands, report: `FAIL: <command>`, `First real error:`, `Proposed fix:`
+6. Do not ask approval for local non-destructive commands.
+7. Do not ask the user to copy/paste commands you can run.
+8. Batch related local checks into one run.
+9. Stop after fixing the current blocker; do not wander.
+10. Ask only for: git push involving backend/worker/infra; Railway deploy/redeploy; seed/migration against Railway Postgres; changing secrets/env vars; destructive commands; billing/Stripe/live actions.
+
+### Report format (only)
+
+- Changed:
+- Ran:
+- Result:
+- Blocker:
+- Next approval needed:
+
+No tutorials. No long summaries. No speculative rewrites. Build.
