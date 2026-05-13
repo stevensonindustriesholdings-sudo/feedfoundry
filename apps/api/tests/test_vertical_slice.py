@@ -93,7 +93,10 @@ def test_insufficient_credits_blocks_job(api_client, db_session: Session):
         },
     )
     assert r.status_code == 400
-    assert r.json()["detail"] == "insufficient_credits"
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["error"] == "INSUFFICIENT_PROCESSING_TIME"
+    assert detail["allowed"] is False
 
 
 def test_job_creation_reserves_credits(api_client, db_session: Session):

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     stripe_annual_lite_included_credits: int = 100
     stripe_annual_studio_included_credits: int = 1500
 
+    # Processing-time goodwill (wallet units = processing minutes)
+    ff_goodwill_max_shortfall_minutes: int = 5
+    ff_goodwill_max_minutes_per_account_per_year: int = 30
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -61,3 +61,23 @@ def estimate_job_credits(
         total += float((modules.get("chapters") or {}).get("cost_ceiling_credits") or 2)
 
     return max(1, int(math.ceil(total)))
+
+
+def estimate_job_processing_minutes(
+    *,
+    routing_path: Path,
+    requested_outputs: List[str],
+    media_duration_seconds: Optional[float],
+) -> int:
+    """Customer-facing processing-time estimate (whole minutes).
+
+    When media duration is known, reserve by wall-clock minutes of source media (min 1).
+    When unknown (pre-probe), fall back to the legacy routing ceiling integer as minutes.
+    """
+    if media_duration_seconds is not None and media_duration_seconds > 0:
+        return max(1, int(math.ceil(float(media_duration_seconds) / 60.0)))
+    return estimate_job_credits(
+        routing_path=routing_path,
+        requested_outputs=requested_outputs,
+        media_duration_seconds=media_duration_seconds,
+    )

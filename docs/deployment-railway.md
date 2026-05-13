@@ -158,6 +158,17 @@ Optional but recommended:
 - `GIT_COMMIT`, `BUILD_TIMESTAMP` — shown on `GET /version`
 - **Worker**: `WORKER_POLL_INTERVAL_SECONDS`, `FF_WORKER_ID` (stable id per replica), same `DATABASE_URL` / R2 / `APP_ENV` as API
 
+### Staging services `api-v2-IQho` and `worker-v2` only
+
+Do **not** apply the following to legacy API/worker Railway services.
+
+| Variable | Service | Notes |
+|----------|---------|--------|
+| `FF_STRICT_SOURCE_VERIFY` | **`worker-v2` only** | Set to `1` **after** you have proven the real upload path (presign → PUT → job completes). When `1`, a missing source object fails the job with `source_object_missing` even in `APP_ENV=staging`. Redeploy **`worker-v2`** after changing this variable. |
+| `FFPROBE_BINARY` | **`worker-v2`** (optional) | Defaults to `ffprobe` on `PATH` (installed with `ffmpeg` in `apps/worker/Dockerfile`). |
+
+End-to-end upload smoke and output expectations: [real-media-verification-sprint.md](real-media-verification-sprint.md).
+
 The API **fails fast on startup** in `staging` / `production` / `prod` if critical variables are missing or placeholders (see `app.config.env_validation`).
 
 ## API start command

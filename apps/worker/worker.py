@@ -30,9 +30,11 @@ from app.models import (  # noqa: E402
 from app.services.credit_ledger import (  # noqa: E402
     debit_reserved_credits,
     ledger_debit_key,
+    ledger_goodwill_revoke_key,
     ledger_release_failure_key,
     ledger_release_remainder_key,
     release_reserved_credits,
+    revoke_goodwill_processing_minutes_on_job_failure,
 )
 from app.services.storage import (  # noqa: E402
     _s3_client,
@@ -484,6 +486,20 @@ def fail_job(session: Session, job: Job, code: str, message: str) -> None:
             session.commit()
         except Exception:
             log.exception("ledger_failure_release")
+
+    gw = int(job.goodwill_minutes_granted or 0)
+    if gw:
+        try:
+            revoke_goodwill_processing_minutes_on_job_failure(
+                session,
+                organisation_id=job.organisation_id,
+                job_id=job.id,
+                minutes=gw,
+                idempotency_key=ledger_goodwill_revoke_key(job.id),
+            )
+            session.commit()
+        except Exception:
+            log.exception("ledger_goodwill_revoke_failure")
 
 
 _stop_event = threading.Event()

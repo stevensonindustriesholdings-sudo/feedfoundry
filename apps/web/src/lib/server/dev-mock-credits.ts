@@ -24,6 +24,11 @@ export function mockAccountCreditsJson(): string {
   return JSON.stringify({
     annual_access_status: "active",
     hosting_until: iso,
+    processing_minutes_available: 300,
+    processing_minutes_reserved: 0,
+    processing_minutes_used_lifetime: 0,
+    goodwill_processing_minutes_granted_ytd: 0,
+    next_processing_period_end: iso,
     credits_available: 300,
     credits_reserved: 0,
     credits_spent_lifetime: 0,

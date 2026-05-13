@@ -3,6 +3,12 @@
 export type AccountCreditsResponse = {
   annual_access_status: string;
   hosting_until: string | null;
+  processing_minutes_available: number;
+  processing_minutes_reserved: number;
+  processing_minutes_used_lifetime: number;
+  goodwill_processing_minutes_granted_ytd: number;
+  next_processing_period_end: string | null;
+  /** @deprecated mirrors processing_minutes_* */
   credits_available: number;
   credits_reserved: number;
   credits_spent_lifetime: number;
@@ -32,6 +38,12 @@ export type CreateJobRequest = {
 export type CreateJobResponse = {
   job_id: string;
   status: string;
+  allowed: boolean;
+  warning: boolean;
+  message: string | null;
+  available_minutes: number | null;
+  estimated_minutes: number;
+  goodwill_minutes: number | null;
   estimated_credits: number;
   reserved_credits: number;
 };
@@ -44,6 +56,10 @@ export type JobStatusResponse = {
   estimated_credits: number | null;
   reserved_credits: number | null;
   actual_credits_so_far?: number | null;
+  goodwill_minutes_granted?: number | null;
+  estimated_processing_minutes?: number | null;
+  reserved_processing_minutes?: number | null;
+  processing_minutes_used_so_far?: number | null;
 };
 
 export type OutputItemResponse = {

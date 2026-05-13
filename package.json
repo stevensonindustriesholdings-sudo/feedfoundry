@@ -1,0 +1,12 @@
+{
+  "name": "feedfoundry",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev": "npm run dev -w feedfoundry-web",
+    "build": "npm run build -w feedfoundry-web",
+    "lint": "npm run lint -w feedfoundry-web",
+    "typecheck": "npm run typecheck -w feedfoundry-web",
+    "start": "npm run start -w feedfoundry-web"
+  }
+}

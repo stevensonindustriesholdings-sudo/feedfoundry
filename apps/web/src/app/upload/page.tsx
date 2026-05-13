@@ -28,6 +28,8 @@ export default function UploadPage() {
   const [liveOutputs, setLiveOutputs] = useState<JobOutputsResponse | null>(null);
   const [livePollErr, setLivePollErr] = useState<string | null>(null);
   const [isLocal, setIsLocal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState<string>("");
 
   const toggleOutput = (id: string) => {
     setOutputs((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -46,7 +48,10 @@ export default function UploadPage() {
       setStatus("Choose a media file to continue.");
       return;
     }
-    setStatus("Preparing secure upload…");
+    setBusy(true);
+    setUploadPct(-2);
+    try {
+    setStatus("Step 1/3 — asking API for a signed upload URL…");
     const pr = await browserPost<PresignUploadResponse>(
       "/v1/uploads/presign",
       {
@@ -58,13 +63,15 @@ export default function UploadPage() {
       getOrgId(),
     );
     if (!pr.ok) {
+      setUploadPct(null);
       setError(pr.error);
       setStatus("Could not start upload.");
       setDebug(pr.error);
       return;
     }
     setPresign(pr.data);
-    setStatus("Uploading to your archive storage…");
+    setStatus("Step 2/3 — uploading bytes to storage (keep this tab open)…");
+    setUploadPct(0);
 
     try {
       const xhr = new XMLHttpRequest();
@@ -72,7 +79,13 @@ export default function UploadPage() {
       const putContentType = file.type || "application/octet-stream";
       xhr.setRequestHeader("Content-Type", putContentType);
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadPct(Math.round((100 * e.loaded) / e.total));
+        if (e.lengthComputable && e.total > 0) {
+          setUploadPct(Math.round((100 * e.loaded) / e.total));
+        } else if (file.size > 0) {
+          setUploadPct(Math.min(99, Math.round((100 * e.loaded) / file.size)));
+        } else {
+          setUploadPct((p) => (p !== null && p < 0 ? p : -1));
+        }
       };
       await new Promise<void>((resolve, reject) => {
         xhr.onload = () => {
@@ -83,6 +96,7 @@ export default function UploadPage() {
         xhr.send(file);
       });
     } catch (e) {
+      setUploadPct(null);
       setStatus("Upload did not complete.");
       setError({
         code: "upstream_error",
@@ -98,17 +112,18 @@ export default function UploadPage() {
     setDebug({ presign: pr.data, uploaded: true });
 
     if (!confirmJob) {
-      setStatus("Media received. Enable job confirmation below to reserve processing credits and queue work.");
+      setStatus("Media received. Enable job confirmation below to reserve processing time and queue work.");
       return;
     }
 
-    setStatus("Creating processing job…");
+    setStatus("Step 3/3 — creating processing job…");
     const jr = await browserPost<CreateJobResponse>(
       "/v1/jobs",
       { media_asset_id: pr.data.media_asset_id, requested_outputs: outputs },
       getOrgId(),
     );
     if (!jr.ok) {
+      setUploadPct(null);
       setError(jr.error);
       setStatus("Job could not be created.");
       setDebug((prev) => ({
@@ -119,8 +134,15 @@ export default function UploadPage() {
     }
     setJob(jr.data);
     setLatestJobId(jr.data.job_id);
-    setStatus("Job queued — watching pipeline below.");
+    if (jr.data.warning && jr.data.message) {
+      setStatus(`${jr.data.message} Watching pipeline below.`);
+    } else {
+      setStatus("Job queued — watching pipeline below.");
+    }
     setDebug({ presign: pr.data, job: jr.data });
+    } finally {
+      setBusy(false);
+    }
   }, [file, mediaType, outputs, confirmJob]);
 
   useEffect(() => {
@@ -159,12 +181,9 @@ export default function UploadPage() {
     <div className="space-y-10">
       {isLocal ? (
         <div className="max-w-3xl rounded-2xl border border-accent/25 bg-accent/5 px-5 py-4 text-sm text-zinc-300">
-          <strong className="text-zinc-100">Local dev</strong> — this UI talks to your FeedFoundry API through{" "}
-          <code className="rounded bg-surface px-1 py-0.5 text-xs text-accent">/api/ff</code>. Set{" "}
-          <code className="rounded bg-surface px-1 py-0.5 text-xs">FEEDFOUNDRY_API_BASE_URL</code> and{" "}
-          <code className="rounded bg-surface px-1 py-0.5 text-xs">FEEDFOUNDRY_INTERNAL_API_KEY</code> in{" "}
-          <code className="rounded bg-surface px-1 py-0.5 text-xs">apps/web/.env.local</code>, then{" "}
-          <code className="rounded bg-surface px-1 py-0.5 text-xs">npm run dev</code> here (port 3000).
+          <strong className="text-zinc-100">Local</strong> — browser calls go through this app&apos;s{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-xs text-accent">/api/ff</code> proxy to your FeedFoundry
+          API.
         </div>
       ) : null}
 
@@ -173,7 +192,7 @@ export default function UploadPage() {
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Upload</h1>
         <p className="text-sm leading-relaxed text-zinc-500">
           Send media to your creator archive storage, then optionally create a job. Job creation reserves{" "}
-          <strong className="font-medium text-zinc-400">processing credits</strong> against your account.
+          <strong className="font-medium text-zinc-400">processing minutes</strong> against your account.
         </p>
       </header>
 
@@ -202,9 +221,26 @@ export default function UploadPage() {
               id="file"
               name="file"
               type="file"
+              accept="video/*,audio/*"
               className="mt-2 block w-full text-sm text-zinc-300 file:mr-4 file:rounded-lg file:border-0 file:bg-surface-border file:px-4 file:py-2 file:font-medium file:text-zinc-100"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setFile(f);
+                if (f) {
+                  const mb = (f.size / (1024 * 1024)).toFixed(1);
+                  setSelectedLabel(`${f.name} · ${mb} MiB`);
+                  setStatus(`Selected “${f.name}”. Click “Upload and start job” below — choosing a file alone does not upload.`);
+                } else {
+                  setSelectedLabel("");
+                  setStatus("");
+                }
+              }}
             />
+            {selectedLabel ? (
+              <p className="mt-2 text-xs text-zinc-500">
+                <span className="font-medium text-zinc-400">Ready:</span> {selectedLabel}
+              </p>
+            ) : null}
           </div>
           <div>
             <label htmlFor="mediaType" className="text-sm font-medium text-zinc-300">
@@ -247,29 +283,53 @@ export default function UploadPage() {
               className="mt-0.5 rounded border-surface-border"
             />
             <span>
-              I confirm that creating a processing job will <strong className="text-zinc-300">reserve processing credits</strong>{" "}
+              I confirm that creating a processing job will <strong className="text-zinc-300">reserve processing minutes</strong>{" "}
               for this run.
             </span>
           </label>
           <button
             type="button"
+            disabled={busy || !file}
             onClick={() => void runUpload()}
-            className="w-full rounded-xl bg-accent py-3 text-sm font-semibold text-surface hover:bg-accent/90 sm:w-auto sm:px-8"
+            className="w-full rounded-xl bg-accent py-3 text-sm font-semibold text-surface hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-8"
           >
-            {confirmJob ? "Upload and start job" : "Upload only"}
+            {busy ? "Working…" : confirmJob ? "Upload and start job" : "Upload only"}
           </button>
           <p className="text-sm text-zinc-500" aria-live="polite">
             {status}
           </p>
           {uploadPct !== null ? (
-            <div className="space-y-1">
-              <div className="h-1.5 overflow-hidden rounded-full bg-surface-border">
-                <div
-                  className="h-full rounded-full bg-accent transition-all duration-300"
-                  style={{ width: `${uploadPct}%` }}
-                />
+            <div
+              className="space-y-2 rounded-xl border border-surface-border bg-surface/40 p-4"
+              aria-busy={busy && uploadPct >= 0 && uploadPct < 100}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Video upload progress</p>
+                {uploadPct >= 0 ? (
+                  <span className="font-mono text-xs tabular-nums text-accent">{uploadPct}%</span>
+                ) : (
+                  <span className="text-xs text-accent">…</span>
+                )}
               </div>
-              <p className="text-xs text-zinc-600">{uploadPct}% transferred</p>
+              <div className="h-3 overflow-hidden rounded-full bg-surface-border shadow-inner">
+                {uploadPct < 0 ? (
+                  <div className="h-full w-2/5 rounded-full bg-accent motion-safe:animate-pulse" />
+                ) : (
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-accent/90 to-accent transition-[width] duration-200"
+                    style={{ width: `${Math.min(100, Math.max(0, uploadPct))}%` }}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-zinc-500">
+                {uploadPct === -2
+                  ? "Getting a secure upload slot from the server…"
+                  : uploadPct === -1
+                    ? "Sending your file — the browser isn’t reporting exact percent; this bar still tracks bytes when possible."
+                    : uploadPct < 100
+                      ? "Do not close this tab until the bar reaches 100%."
+                      : "File delivered — finishing up."}
+              </p>
             </div>
           ) : null}
         </div>
@@ -296,7 +356,7 @@ export default function UploadPage() {
               <p className="font-semibold text-zinc-100">Job queued</p>
               <p className="mt-2 font-mono text-sm text-zinc-300">{job.job_id}</p>
               <p className="mt-2 text-sm text-zinc-400">
-                Estimated credits {job.estimated_credits} · Reserved {job.reserved_credits}
+                Estimated minutes {job.estimated_minutes} · Reserved {job.reserved_credits}
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Link href="/jobs" className="text-sm font-semibold text-accent no-underline hover:underline">
@@ -361,7 +421,7 @@ export default function UploadPage() {
             </div>
           ) : null}
           <p className="text-xs leading-relaxed text-zinc-600">
-            Early access: enrichments and output bundles may expand over time; your annual hosted archive and credit
+            Early access: enrichments and output bundles may expand over time; your annual hosted archive and processing
             behaviour follow the active product policy.
           </p>
         </div>

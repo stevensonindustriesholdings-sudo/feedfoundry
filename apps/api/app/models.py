@@ -34,6 +34,8 @@ class AnnualAccessStatus(str, Enum):
 class CreditTransactionType(str, Enum):
     PURCHASE = "purchase"
     ANNUAL_GRANT = "annual_grant"
+    GOODWILL_GRANT = "goodwill_grant"
+    GOODWILL_REVOKE = "goodwill_revoke"
     RESERVE = "reserve"
     DEBIT = "debit"
     RELEASE = "release"
@@ -199,6 +201,7 @@ class Job(SQLModel, table=True):
     estimated_credits: Optional[int] = None
     reserved_credits: Optional[int] = None
     actual_credits: Optional[int] = None
+    goodwill_minutes_granted: Optional[int] = None
     failure_code: Optional[str] = None
     failure_message: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)

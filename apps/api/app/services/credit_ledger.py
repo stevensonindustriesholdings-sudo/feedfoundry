@@ -43,6 +43,10 @@ def ledger_release_failure_key(job_id: str) -> str:
     return f"ff:job:{job_id}:release_failure"
 
 
+def ledger_goodwill_revoke_key(job_id: str) -> str:
+    return f"ff:job:{job_id}:goodwill_revoke_on_failure"
+
+
 def get_or_create_wallet(session: Session, organisation_id: str) -> CreditWallet:
     ensure_org_row_for_internal_routes(session, organisation_id)
     stmt = select(CreditWallet).where(CreditWallet.organisation_id == organisation_id)
@@ -149,7 +153,7 @@ def reserve_credits(
         type_=CreditTransactionType.RESERVE,
         amount=amount,
         balance_available_after=wallet.balance_available,
-        memo="reserve_for_job",
+        memo="processing_minutes_reserved",
         idempotency_key=idempotency_key,
     )
     session.flush()
@@ -190,7 +194,7 @@ def release_reserved_credits(
         type_=CreditTransactionType.RELEASE,
         amount=amount,
         balance_available_after=wallet.balance_available,
-        memo="release_reserved",
+        memo="processing_minutes_released",
         idempotency_key=idempotency_key,
     )
     session.flush()
@@ -231,7 +235,47 @@ def debit_reserved_credits(
         type_=CreditTransactionType.DEBIT,
         amount=amount,
         balance_available_after=wallet.balance_available,
-        memo="debit_for_job",
+        memo="processing_minutes_used",
+        idempotency_key=idempotency_key,
+        stripe_reference=None,
+    )
+    session.flush()
+    return _snapshot_from_wallet(wallet)
+
+
+def revoke_goodwill_processing_minutes_on_job_failure(
+    session: Session,
+    *,
+    organisation_id: str,
+    job_id: str,
+    minutes: int,
+    idempotency_key: str,
+) -> WalletSnapshot:
+    """Remove goodwill minutes that were granted only for this job when the job fails."""
+    if minutes <= 0:
+        raise CreditLedgerError("revoke goodwill minutes must be positive")
+    if not idempotency_key:
+        raise CreditLedgerError("idempotency_key required")
+
+    wallet = get_wallet_for_update(session, organisation_id)
+    existing = _find_idempotent_txn(session, idempotency_key)
+    if existing:
+        session.refresh(wallet)
+        return _snapshot_from_wallet(wallet)
+
+    claw = min(wallet.balance_available, minutes)
+    wallet.balance_available -= claw
+    wallet.updated_at = utcnow()
+    session.add(wallet)
+    _record_txn(
+        session,
+        organisation_id=organisation_id,
+        wallet_id=wallet.id,
+        job_id=job_id,
+        type_=CreditTransactionType.GOODWILL_REVOKE,
+        amount=claw,
+        balance_available_after=wallet.balance_available,
+        memo="goodwill_processing_minutes_revoked_job_failed",
         idempotency_key=idempotency_key,
         stripe_reference=None,
     )
@@ -270,9 +314,85 @@ def purchase_credits_from_stripe(
         type_=CreditTransactionType.PURCHASE,
         amount=credits,
         balance_available_after=wallet.balance_available,
-        memo=memo or "stripe_credit_pack",
+        memo=memo or "processing_minutes_granted",
         idempotency_key=idempotency_key,
         stripe_reference=stripe_reference,
+    )
+    session.flush()
+    return _snapshot_from_wallet(wallet)
+
+
+def grant_goodwill_processing_minutes(
+    session: Session,
+    *,
+    organisation_id: str,
+    job_id: str,
+    minutes: int,
+    idempotency_key: str,
+) -> WalletSnapshot:
+    if minutes <= 0:
+        raise CreditLedgerError("goodwill minutes must be positive")
+    if not idempotency_key:
+        raise CreditLedgerError("idempotency_key required")
+
+    wallet = get_wallet_for_update(session, organisation_id)
+    existing = _find_idempotent_txn(session, idempotency_key)
+    if existing:
+        session.refresh(wallet)
+        return _snapshot_from_wallet(wallet)
+
+    wallet.balance_available += minutes
+    wallet.updated_at = utcnow()
+    session.add(wallet)
+    _record_txn(
+        session,
+        organisation_id=organisation_id,
+        wallet_id=wallet.id,
+        job_id=job_id,
+        type_=CreditTransactionType.GOODWILL_GRANT,
+        amount=minutes,
+        balance_available_after=wallet.balance_available,
+        memo="goodwill_processing_minutes_granted",
+        idempotency_key=idempotency_key,
+        stripe_reference=None,
+    )
+    session.flush()
+    return _snapshot_from_wallet(wallet)
+
+
+def admin_grant_processing_minutes(
+    session: Session,
+    *,
+    organisation_id: str,
+    minutes: int,
+    idempotency_key: str,
+    memo: Optional[str] = None,
+) -> WalletSnapshot:
+    if minutes <= 0:
+        raise CreditLedgerError("minutes must be positive")
+    if not idempotency_key:
+        raise CreditLedgerError("idempotency_key required")
+
+    wallet = get_wallet_for_update(session, organisation_id)
+    existing = _find_idempotent_txn(session, idempotency_key)
+    if existing:
+        session.refresh(wallet)
+        return _snapshot_from_wallet(wallet)
+
+    wallet.balance_available += minutes
+    wallet.updated_at = utcnow()
+    session.add(wallet)
+    _record_txn(
+        session,
+        organisation_id=organisation_id,
+        wallet_id=wallet.id,
+        job_id=None,
+        type_=CreditTransactionType.ADMIN_ADJUSTMENT,
+        amount=minutes,
+        balance_available_after=wallet.balance_available,
+        memo=memo or "processing_minutes_granted",
+        idempotency_key=idempotency_key,
+        stripe_reference=None,
     )
     session.flush()
     return _snapshot_from_wallet(wallet)
@@ -309,7 +429,7 @@ def grant_annual_credits_from_stripe(
         type_=CreditTransactionType.ANNUAL_GRANT,
         amount=credits,
         balance_available_after=wallet.balance_available,
-        memo=memo or "stripe_annual_included_credits",
+        memo=memo or "processing_minutes_granted",
         idempotency_key=idempotency_key,
         stripe_reference=stripe_reference,
     )

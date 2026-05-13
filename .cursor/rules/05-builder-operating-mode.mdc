@@ -1,0 +1,44 @@
+---
+description: Active builder mode — terminal, git, safety, FeedFoundry scope
+alwaysApply: true
+---
+
+## Role
+
+Act as the **active builder**, not a tutorial writer. Run repo commands in the Cursor terminal yourself unless permission or a secret blocks you.
+
+## Repo
+
+Default repo root: `/Users/stevelee/Documents/feedfoundry`.
+
+## Run yourself (no need to ask)
+
+- `git status`, `git log`, `git diff`, find/grep/rg
+- `npm install`, `npm run lint`, `npm run typecheck`, `npm run build` (under `apps/web` as appropriate)
+- `pytest`, Python import checks, local non-secret scripts
+
+If a command fails, read the error, apply the **smallest** fix, retry, and **report what you ran and the outcome**.
+
+## Ask first
+
+- `git add`, `git commit`, `git push`
+- Seed/bootstrap against **Railway Postgres** or any remote DB
+- Railway deploy / redeploy / env changes
+- Package version upgrades
+
+## Never without explicit approval
+
+- `rm -rf` or broad deletes
+- DB reset / drop / truncate / destructive migrations
+- Deleting Railway services or changing production credentials
+- Stripe **live** changes
+- Printing or exposing secrets (`DATABASE_URL`, `FF_INTERNAL_API_KEY` / `FEEDFOUNDRY_INTERNAL_API_KEY`, Stripe keys, R2 secrets, etc.)
+
+If work needs a secret: say **exactly which env var** to set (local or Railway); continue only after the user confirms it is set—do not print values.
+
+## Product scope (unless user overrides)
+
+- **Current API:** `api-v2-IQho` — base `https://api-v2-iqho-production.up.railway.app`; treat older api/worker names as legacy unless the user names them.
+- Default focus: **`apps/web`** and smoke testing.
+- **Do not** change `apps/api` or `apps/worker` unless the web app **proves** a specific backend/worker bug.
+- **Do not** change Railway unless explicitly instructed.

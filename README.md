@@ -114,7 +114,31 @@ python3 scripts/smoke_staging.py
 
 Unset `SMOKE_INTERNAL_KEY` to run only public checks (`/health`, `/ready`, `/docs`, `/openapi.json`, manifest probe).
 
-### 9. Example curl (Bearer + org headers)
+### 9. Web app (Next.js — the only npm workspace)
+
+There is **one** JavaScript package: `apps/web` (`feedfoundry-web`). The API and worker are Python, not npm.
+
+From **repo root** (after Node 20+ is installed):
+
+```bash
+npm install          # installs apps/web via workspaces (hoists to root node_modules)
+npm run dev          # same as: cd apps/web && npm run dev → http://localhost:3000
+```
+
+Point the web app at your **local API** (must match `FF_INTERNAL_API_KEY` in the API process):
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+# Set:
+#   FEEDFOUNDRY_API_BASE_URL=http://127.0.0.1:8000
+#   FEEDFOUNDRY_INTERNAL_API_KEY=<same value as FF_INTERNAL_API_KEY for the API>
+#   FEEDFOUNDRY_DEFAULT_ORG_ID=org_dev_demo
+#   NEXT_PUBLIC_FEEDFOUNDRY_API_BASE_URL=http://127.0.0.1:8000   # public manifest fetches from the browser
+```
+
+Then run the API on port **8000** (section 5). The browser calls **`/api/ff/...`** on Next; Next proxies to `FEEDFOUNDRY_API_BASE_URL` with the internal key.
+
+### 10. Example curl (Bearer + org headers)
 
 Use the same `FF_INTERNAL_API_KEY` value as the Bearer token, and the seeded org id `org_dev_demo`.
 

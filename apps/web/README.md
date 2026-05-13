@@ -23,13 +23,21 @@ Copy **`.env.example`** → **`.env.local`** (never commit secrets).
 
 ## Local development
 
-From **repository root**:
+**Option A — from repo root** (npm workspaces; one `node_modules` tree at root):
+
+```bash
+npm install
+cp apps/web/.env.example apps/web/.env.local
+# Edit apps/web/.env.local — for local API set FEEDFOUNDRY_API_BASE_URL=http://127.0.0.1:8000 and matching internal key
+npm run dev
+```
+
+**Option B — only this app:**
 
 ```bash
 cd apps/web
 npm install
 cp .env.example .env.local
-# Edit .env.local — set FEEDFOUNDRY_INTERNAL_API_KEY to match Railway api-v2
 npm run dev
 ```
 

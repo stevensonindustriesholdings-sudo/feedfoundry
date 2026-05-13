@@ -34,6 +34,13 @@ class CreateJobRequest(BaseModel):
 class CreateJobResponse(BaseModel):
     job_id: str
     status: str
+    allowed: bool = True
+    warning: bool = False
+    message: Optional[str] = None
+    available_minutes: Optional[int] = None
+    estimated_minutes: int
+    goodwill_minutes: Optional[int] = None
+    # Legacy field names — values are processing minutes (same integer as estimated_minutes).
     estimated_credits: int
     reserved_credits: int
 
@@ -46,6 +53,10 @@ class JobStatusResponse(BaseModel):
     estimated_credits: Optional[int]
     reserved_credits: Optional[int]
     actual_credits_so_far: Optional[int] = None
+    goodwill_minutes_granted: Optional[int] = None
+    estimated_processing_minutes: Optional[int] = None
+    reserved_processing_minutes: Optional[int] = None
+    processing_minutes_used_so_far: Optional[int] = None
 
 
 class OutputItemResponse(BaseModel):
@@ -63,6 +74,12 @@ class JobOutputsResponse(BaseModel):
 class AccountCreditsResponse(BaseModel):
     annual_access_status: str
     hosting_until: Optional[str]
+    processing_minutes_available: int
+    processing_minutes_reserved: int
+    processing_minutes_used_lifetime: int
+    goodwill_processing_minutes_granted_ytd: int
+    next_processing_period_end: Optional[str]
+    # Deprecated mirrors for older clients — same values as processing_minutes_*.
     credits_available: int
     credits_reserved: int
     credits_spent_lifetime: int

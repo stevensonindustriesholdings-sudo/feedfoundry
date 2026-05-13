@@ -1,43 +1,92 @@
-import { StagingLimitations } from "@/components/StagingLimitations";
+import Link from "next/link";
 
 export default function PricingPage() {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold text-zinc-50">Pricing</h1>
-        <p className="mt-2 max-w-2xl text-zinc-400">
-          Credits are consumed by processing jobs. Larger files and richer output bundles may use more credits.
-          Credit expiry and rollover follow the active product policy.
+    <div className="space-y-12 md:space-y-16">
+      <header className="max-w-2xl space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Pricing</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Archive access and credits</h1>
+        <p className="text-base leading-relaxed text-zinc-400">
+          Your <strong className="font-medium text-zinc-300">annual hosted archive</strong> covers where outputs live.
+          <strong className="font-medium text-zinc-300"> Processing credits</strong> power each job—buy packs when you
+          need more throughput. Checkout from this app will connect here when billing is enabled.
         </p>
-      </div>
+      </header>
 
-      <section>
-        <h2 className="text-xl font-medium text-zinc-100">Annual archive access</h2>
-        <p className="mt-2 text-sm text-zinc-400">
-          Hosted archive access for your processed outputs — not a monthly subscription for unlimited processing.
+      <section className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <h2 className="text-xl font-semibold text-zinc-100">Annual hosted archive</h2>
+          <Link href="/dashboard" className="text-sm font-medium text-accent no-underline hover:underline">
+            Check access in dashboard →
+          </Link>
+        </div>
+        <p className="max-w-2xl text-sm text-zinc-500">
+          Includes hosting for your processed outputs and public manifests for the term you purchase. Larger libraries
+          and retention options are reflected at checkout.
         </p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <article className="rounded-xl border border-surface-border bg-surface-raised/50 p-5">
-            <h3 className="font-semibold text-zinc-100">Annual Archive Access</h3>
-            <p className="mt-2 text-sm text-zinc-400">Placeholder — Stripe Checkout for annual plans will wire here.</p>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <article className="relative overflow-hidden rounded-2xl border border-accent/25 bg-gradient-to-b from-accent/10 to-surface-raised/40 p-8 ring-1 ring-accent/20">
+            <p className="text-xs font-semibold uppercase tracking-wider text-accent">Primary</p>
+            <h3 className="mt-2 text-2xl font-semibold text-zinc-50">Annual archive access</h3>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              Hosted archive for your creator archive: transcripts, chapters, metadata, CTAs, fact sheets, FAQs, and
+              manifests—kept available for the year on your plan.
+            </p>
+            <p className="mt-8 font-mono text-3xl font-semibold tracking-tight text-zinc-100">Custom</p>
+            <p className="mt-1 text-xs text-zinc-500">Final price at Stripe Checkout</p>
+            <p className="mt-6 text-xs text-zinc-600">Stripe Checkout integration from this app is planned; until then, use your configured org in the API.</p>
+          </article>
+          <article className="rounded-2xl border border-surface-border bg-surface-raised/40 p-8">
+            <h3 className="text-lg font-semibold text-zinc-100">What archive access includes</h3>
+            <ul className="mt-4 space-y-3 text-sm text-zinc-400">
+              <li className="flex gap-2">
+                <span className="text-accent">✓</span>
+                Storage-backed deliverables for completed jobs
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent">✓</span>
+                Public manifest URLs for your creator archive
+              </li>
+              <li className="flex gap-2">
+                <span className="text-accent">✓</span>
+                Clear hosting-until dates in your dashboard
+              </li>
+            </ul>
           </article>
         </div>
       </section>
 
-      <section>
-        <h2 className="text-xl font-medium text-zinc-100">Processing credit packs</h2>
-        <p className="mt-2 text-sm text-zinc-400">Add-on credits for processing jobs alongside included credits.</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          {["Starter Credit Pack", "Growth Credit Pack", "Studio Credit Pack"].map((name) => (
-            <article key={name} className="rounded-xl border border-surface-border bg-surface-raised/50 p-5">
-              <h3 className="font-semibold text-zinc-100">{name}</h3>
-              <p className="mt-2 text-sm text-zinc-400">Placeholder — checkout wiring pending.</p>
+      <section className="space-y-6">
+        <h2 className="text-xl font-semibold text-zinc-100">Processing credit packs</h2>
+        <p className="max-w-2xl text-sm text-zinc-500">
+          Credits are reserved when a job is created and reconciled as work completes. Add packs alongside your archive
+          plan when you batch-ingest seasons or back-catalog work.
+        </p>
+        <div className="grid gap-5 md:grid-cols-3">
+          {[
+            { name: "Starter pack", hint: "Light batches, pilots, and single shows.", credits: "— credits" },
+            { name: "Growth pack", hint: "Season drops and steady publishing.", credits: "— credits", featured: true },
+            { name: "Studio pack", hint: "Libraries, networks, and high volume.", credits: "— credits" },
+          ].map((pack) => (
+            <article
+              key={pack.name}
+              className={
+                pack.featured
+                  ? "rounded-2xl border border-accent/30 bg-surface-raised/60 p-6 ring-1 ring-accent/15"
+                  : "rounded-2xl border border-surface-border bg-surface-raised/40 p-6"
+              }
+            >
+              {pack.featured ? (
+                <p className="text-xs font-semibold uppercase tracking-wider text-accent">Popular</p>
+              ) : null}
+              <h3 className={`font-semibold text-zinc-100 ${pack.featured ? "mt-2" : ""}`}>{pack.name}</h3>
+              <p className="mt-2 text-sm text-zinc-500">{pack.hint}</p>
+              <p className="mt-6 font-mono text-xl text-zinc-200">{pack.credits}</p>
+              <p className="mt-1 text-xs text-zinc-600">Checkout wiring from this app is planned.</p>
             </article>
           ))}
         </div>
       </section>
-
-      <StagingLimitations />
     </div>
   );
 }

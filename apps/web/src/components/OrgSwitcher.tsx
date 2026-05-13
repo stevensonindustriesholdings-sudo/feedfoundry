@@ -21,11 +21,12 @@ export function OrgSwitcher() {
   }
 
   return (
-    <div className="rounded-lg border border-dashed border-zinc-600 bg-surface/60 p-4 text-sm">
-      <p className="font-medium text-zinc-300">Staging org id</p>
+    <div className="rounded-2xl border border-dashed border-surface-border bg-surface/50 p-5 text-sm">
+      <p className="font-medium text-zinc-300">Organisation override</p>
       <p className="mt-1 text-xs text-zinc-500">
-        Stored in <code className="rounded bg-black/30 px-1">localStorage</code> as{" "}
-        <code className="rounded bg-black/30 px-1">ff_org_id</code>. Empty = use server default.
+        For local and pre-production testing: stored in{" "}
+        <code className="rounded bg-black/30 px-1">localStorage</code> as{" "}
+        <code className="rounded bg-black/30 px-1">ff_org_id</code>. Leave empty to use the server default org.
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <input

@@ -6,8 +6,17 @@
   color-scheme: dark;
 }
 
+.app-shell {
+  background-color: #0f1419;
+  background-image:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(61, 154, 110, 0.12), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(36, 48, 68, 0.35), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 0% 20%, rgba(22, 29, 39, 0.9), transparent 45%);
+  background-attachment: fixed;
+}
+
 body {
-  @apply bg-surface text-zinc-100;
+  @apply text-zinc-100;
 }
 
 a {
