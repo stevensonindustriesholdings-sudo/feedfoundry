@@ -12,6 +12,7 @@ from app.models import (
     CreditWallet,
     utcnow,
 )
+from app.services.organisation_guard import ensure_org_row_for_internal_routes
 
 
 class CreditLedgerError(Exception):
@@ -43,6 +44,7 @@ def ledger_release_failure_key(job_id: str) -> str:
 
 
 def get_or_create_wallet(session: Session, organisation_id: str) -> CreditWallet:
+    ensure_org_row_for_internal_routes(session, organisation_id)
     stmt = select(CreditWallet).where(CreditWallet.organisation_id == organisation_id)
     wallet = session.exec(stmt).first()
     if wallet:
@@ -55,6 +57,7 @@ def get_or_create_wallet(session: Session, organisation_id: str) -> CreditWallet
 
 
 def get_wallet_for_update(session: Session, organisation_id: str) -> CreditWallet:
+    ensure_org_row_for_internal_routes(session, organisation_id)
     stmt = (
         select(CreditWallet)
         .where(CreditWallet.organisation_id == organisation_id)

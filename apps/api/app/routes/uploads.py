@@ -7,6 +7,7 @@ from app.models import MediaAsset, MediaAssetStatus, MediaType
 from app.schemas.api import PresignUploadRequest, PresignUploadResponse
 from app.services import annual_access as annual_access_svc
 from app.services import storage as storage_service
+from app.services.organisation_guard import ensure_org_row_for_internal_routes
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -27,6 +28,8 @@ def presign_upload(
         mt = MediaType(body.media_type)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid media_type")
+
+    ensure_org_row_for_internal_routes(session, organisation_id)
 
     asset = MediaAsset(
         organisation_id=organisation_id,
