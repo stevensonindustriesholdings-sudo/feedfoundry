@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     stripe_credit_pack_100_credits: int = 100
     stripe_credit_pack_500_credits: int = 500
     stripe_credit_pack_1500_credits: int = 1500
+    # Env names retain *_CREDITS; values are whole processing minutes granted to the wallet.
     stripe_annual_core_included_credits: int = 300
     stripe_annual_lite_included_credits: int = 100
     stripe_annual_studio_included_credits: int = 1500

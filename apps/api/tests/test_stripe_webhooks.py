@@ -62,7 +62,7 @@ def stripe_env(monkeypatch):
 def test_valid_annual_access_event(db_session: Session, stripe_env):
     org = Organisation(id="org_stripe_1", name="O", slug="s1")
     db_session.add(org)
-    db_session.add(CreditWallet(organisation_id=org.id, balance_available=0))
+    db_session.add(CreditWallet(organisation_id=org.id, processing_minutes_available=0))
     db_session.commit()
 
     ev = _checkout_event(event_id="evt_annual_1", org_id=org.id, price_id="price_annual_core")
@@ -73,15 +73,15 @@ def test_valid_annual_access_event(db_session: Session, stripe_env):
     aa = db_session.exec(select(AnnualAccess).where(AnnualAccess.organisation_id == org.id)).first()
     assert aa is not None
     assert aa.status == AnnualAccessStatus.ACTIVE
-    assert aa.plan_code == "creator_core"
+    assert aa.included_processing_minutes_annual == 300
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org.id)).one()
-    assert wallet.balance_available == 300
+    assert wallet.processing_minutes_available == 300
 
 
 def test_valid_credit_pack_event(db_session: Session, stripe_env):
     org = Organisation(id="org_stripe_2", name="O2", slug="s2")
     db_session.add(org)
-    db_session.add(CreditWallet(organisation_id=org.id, balance_available=10))
+    db_session.add(CreditWallet(organisation_id=org.id, processing_minutes_available=10))
     db_session.commit()
 
     ev = _checkout_event(event_id="evt_pack_1", org_id=org.id, price_id="price_credits_100")
@@ -90,13 +90,13 @@ def test_valid_credit_pack_event(db_session: Session, stripe_env):
     db_session.commit()
 
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org.id)).one()
-    assert wallet.balance_available == 110
+    assert wallet.processing_minutes_available == 110
 
 
 def test_duplicate_stripe_event_ignored(db_session: Session, stripe_env):
     org = Organisation(id="org_stripe_3", name="O3", slug="s3")
     db_session.add(org)
-    db_session.add(CreditWallet(organisation_id=org.id, balance_available=0))
+    db_session.add(CreditWallet(organisation_id=org.id, processing_minutes_available=0))
     db_session.commit()
 
     ev = _checkout_event(event_id="evt_dup_1", org_id=org.id, price_id="price_credits_100")
@@ -104,12 +104,12 @@ def test_duplicate_stripe_event_ignored(db_session: Session, stripe_env):
     r1 = billing.process_stripe_event(db_session, ev, settings=settings)
     assert r1.get("duplicate") is not True
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org.id)).one()
-    bal_after_first = wallet.balance_available
+    bal_after_first = wallet.processing_minutes_available
 
     r2 = billing.process_stripe_event(db_session, ev, settings=settings)
     assert r2.get("duplicate") is True
     db_session.refresh(wallet)
-    assert wallet.balance_available == bal_after_first
+    assert wallet.processing_minutes_available == bal_after_first
 
 
 def test_invalid_signature_rejected(api_client: TestClient, stripe_env, monkeypatch):
@@ -133,7 +133,7 @@ def test_unknown_price_logged_no_crash(db_session: Session, stripe_env, caplog):
 
     org = Organisation(id="org_stripe_4", name="O4", slug="s4")
     db_session.add(org)
-    db_session.add(CreditWallet(organisation_id=org.id, balance_available=5))
+    db_session.add(CreditWallet(organisation_id=org.id, processing_minutes_available=5))
     db_session.commit()
 
     ev = _checkout_event(event_id="evt_unknown", org_id=org.id, price_id="price_totally_unknown")
@@ -142,7 +142,7 @@ def test_unknown_price_logged_no_crash(db_session: Session, stripe_env, caplog):
         out = billing.handle_checkout_session_completed(db_session, ev, settings=settings)
     assert out == "noop_unknown_price"
     wallet = db_session.exec(select(CreditWallet).where(CreditWallet.organisation_id == org.id)).one()
-    assert wallet.balance_available == 5
+    assert wallet.processing_minutes_available == 5
 
 
 def test_full_route_valid_checkout(api_client: TestClient, sqlite_engine, stripe_env, monkeypatch):
@@ -152,7 +152,7 @@ def test_full_route_valid_checkout(api_client: TestClient, sqlite_engine, stripe
     org = Organisation(id="org_route_1", name="R", slug="sr")
     with Session(sqlite_engine) as s:
         s.add(org)
-        s.add(CreditWallet(organisation_id=org.id, balance_available=0))
+        s.add(CreditWallet(organisation_id=org.id, processing_minutes_available=0))
         s.commit()
 
     ev = _checkout_event(event_id="evt_route_1", org_id="org_route_1", price_id="price_annual_core")

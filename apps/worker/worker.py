@@ -28,11 +28,11 @@ from app.models import (  # noqa: E402
     utcnow,
 )
 from app.services.credit_ledger import (  # noqa: E402
-    debit_reserved_credits,
+    debit_reserved_processing_minutes,
     ledger_debit_key,
     ledger_release_failure_key,
     ledger_release_remainder_key,
-    release_reserved_credits,
+    release_reserved_processing_minutes,
 )
 from app.services.storage import (  # noqa: E402
     _s3_client,
@@ -48,9 +48,13 @@ from app.settings import get_settings  # noqa: E402
 
 from media_inspection import inspect_media_file  # noqa: E402
 from pipeline.audio_extraction import run_audio_extraction  # noqa: E402
+from pipeline.errors import JobProcessingFailure  # noqa: E402
+from pipeline.export_bundle import build_bundle_index, bundle_json_bytes  # noqa: E402
+from pipeline.public_payloads import media_inspection_json_for_customer, transcript_json_for_customer  # noqa: E402
 from pipeline.transcript import TranscriptPipelineInput, run_transcript_pipeline_v0  # noqa: E402
 from pipeline.transcript_derived_outputs import (  # noqa: E402
     build_chapters_from_transcript,
+    build_ctas_from_transcript,
     build_fact_sheet_from_transcript,
     build_faqs_from_transcript,
     build_hosted_manifest_from_transcript,
@@ -93,6 +97,17 @@ STUB_OUTPUT_SPECS: list[tuple[str, JobOutputType, dict]] = [
             "schema_version": "1.0",
             "youtube": {"title": "Stub episode"},
             "podcast": {"title": "Stub episode"},
+        },
+    ),
+    (
+        "ctas.json",
+        JobOutputType.CTAS,
+        {
+            "schema_version": "1.0",
+            "ctas": [
+                {"label": "Open full transcript", "intent": "read_transcript", "url": None},
+                {"label": "Share this episode", "intent": "share_episode", "url": None},
+            ],
         },
     ),
     (
@@ -145,7 +160,7 @@ def claim_next_job(session: Session) -> Job | None:
     job = _claim_job_postgres(session) if dialect == "postgresql" else _claim_job_sqlite(session)
     if not job:
         return None
-    job.status = JobStatus.PROBING
+    job.status = JobStatus.PROCESSING
     job.current_stage = "Claimed job"
     job.progress_percent = 5
     if job.started_at is None:
@@ -196,14 +211,17 @@ def _write_stub_outputs(
         JobOutputType.FACT_SHEET.value,
         JobOutputType.FAQS.value,
         JobOutputType.METADATA.value,
+        JobOutputType.CTAS.value,
         JobOutputType.HOSTED_MANIFEST.value,
     ]
     if include_mi:
         planned_types.append(JobOutputType.MEDIA_INSPECTION.value)
+    planned_types.append(JobOutputType.EXPORT_BUNDLE.value)
 
     for filename, output_type in OUTPUT_WRITE_ORDER:
         if output_type == JobOutputType.RAW_TRANSCRIPT and transcript_payload is not None:
-            payload = dict(transcript_payload)
+            pub = transcript_json_for_customer(transcript_payload)
+            payload = dict(pub) if pub is not None else dict(STUB_TEMPLATE_BY_TYPE[JobOutputType.RAW_TRANSCRIPT])
         elif output_type == JobOutputType.RAW_TRANSCRIPT:
             payload = dict(STUB_TEMPLATE_BY_TYPE[JobOutputType.RAW_TRANSCRIPT])
         elif transcript_payload is not None:
@@ -226,6 +244,10 @@ def _write_stub_outputs(
                     media_inspection_payload,
                     derived_from=df,
                     original_basename=media.original_filename,
+                )
+            elif output_type == JobOutputType.CTAS:
+                payload = build_ctas_from_transcript(
+                    transcript_payload, media_inspection_payload, derived_from=df
                 )
             elif output_type == JobOutputType.HOSTED_MANIFEST:
                 payload = build_hosted_manifest_from_transcript(
@@ -258,6 +280,7 @@ def _write_stub_outputs(
             job_id=job.id,
             organisation_id=org_id,
             output_type=output_type,
+            schema_version="1.0",
             storage_key=key,
             json_payload=payload if output_type == JobOutputType.HOSTED_MANIFEST else None,
         )
@@ -266,7 +289,8 @@ def _write_stub_outputs(
     if media_inspection_payload is not None:
         filename = "media_inspection.json"
         key = job_output_object_key(org_id=org_id, job_id=job.id, filename=filename)
-        body = json.dumps(media_inspection_payload, indent=2).encode("utf-8")
+        mi_pub = media_inspection_json_for_customer(media_inspection_payload) or media_inspection_payload
+        body = json.dumps(mi_pub, indent=2).encode("utf-8")
         put_json_bytes(bucket=out_bucket, key=key, body=body, settings=settings)
         manifest_doc["outputs"].append(
             {"output_type": JobOutputType.MEDIA_INSPECTION.value, "storage_key": key, "filename": filename}
@@ -276,6 +300,7 @@ def _write_stub_outputs(
                 job_id=job.id,
                 organisation_id=org_id,
                 output_type=JobOutputType.MEDIA_INSPECTION,
+                schema_version="1.0",
                 storage_key=key,
                 json_payload=None,
             )
@@ -285,6 +310,43 @@ def _write_stub_outputs(
         manifest_doc["creator_slug"] = media.creator_slug
     if media.asset_slug:
         manifest_doc["asset_slug"] = media.asset_slug
+
+    bundle_rows: list[dict] = [
+        {
+            "output_type": o["output_type"],
+            "storage_key": o["storage_key"],
+            "content_type": "application/json",
+            "byte_length": None,
+        }
+        for o in manifest_doc["outputs"]
+    ]
+    export_fn = "export_bundle.json"
+    export_key = job_output_object_key(org_id=org_id, job_id=job.id, filename=export_fn)
+    bundle_doc = build_bundle_index(
+        job_id=job.id,
+        organisation_id=org_id,
+        media_asset_id=media.id,
+        outputs=bundle_rows,
+    )
+    put_json_bytes(
+        bucket=out_bucket,
+        key=export_key,
+        body=bundle_json_bytes(bundle_doc),
+        settings=settings,
+    )
+    manifest_doc["outputs"].append(
+        {"output_type": JobOutputType.EXPORT_BUNDLE.value, "storage_key": export_key, "filename": export_fn}
+    )
+    session.add(
+        JobOutput(
+            job_id=job.id,
+            organisation_id=org_id,
+            output_type=JobOutputType.EXPORT_BUNDLE,
+            schema_version="1.0",
+            storage_key=export_key,
+            json_payload=None,
+        )
+    )
 
     mkey = job_manifest_object_key(org_id=org_id, job_id=job.id)
     put_json_bytes(
@@ -296,13 +358,14 @@ def _write_stub_outputs(
     session.commit()
 
 
-def _settle_credits(session: Session, job: Job) -> None:
-    reserved = int(job.reserved_credits or 0)
-    estimated = int(job.estimated_credits or reserved or 0)
+def _settle_processing_allowance(session: Session, job: Job) -> None:
+    """On successful completion: charge actual minutes, release unused reserve (no charge on failure)."""
+    reserved = int(job.reserved_processing_minutes or 0)
+    estimated = int(job.estimated_processing_minutes or reserved or 0)
     actual = min(reserved, estimated) if reserved else 0
 
     if reserved and actual:
-        debit_reserved_credits(
+        debit_reserved_processing_minutes(
             session,
             organisation_id=job.organisation_id,
             job_id=job.id,
@@ -311,7 +374,7 @@ def _settle_credits(session: Session, job: Job) -> None:
         )
     remainder = reserved - actual
     if remainder > 0:
-        release_reserved_credits(
+        release_reserved_processing_minutes(
             session,
             organisation_id=job.organisation_id,
             job_id=job.id,
@@ -319,7 +382,7 @@ def _settle_credits(session: Session, job: Job) -> None:
             idempotency_key=ledger_release_remainder_key(job.id),
         )
 
-    job.actual_credits = actual
+    job.actual_processing_minutes_charged = actual
     session.add(job)
     session.commit()
 
@@ -346,7 +409,7 @@ def process_job(session: Session, job: Job) -> None:
     settings = get_settings()
     media = session.get(MediaAsset, job.media_asset_id)
     if not media:
-        raise RuntimeError("media_missing")
+        raise JobProcessingFailure("media_missing", "Job media asset record was not found.")
 
     src_bucket = bucket_for_source(settings)
     skip_verify = os.environ.get("FF_SKIP_SOURCE_VERIFY", "").lower() in ("1", "true", "yes")
@@ -374,7 +437,10 @@ def process_job(session: Session, job: Job) -> None:
                 media.storage_source_key,
             )
         else:
-            raise RuntimeError("source_object_missing")
+            raise JobProcessingFailure(
+                "source_object_missing",
+                "Uploaded source object is not available in storage yet; try again shortly.",
+            )
     elif not skip_verify and not can_head:
         log.warning(
             "worker_skip_source_head_no_s3_client job_id=%s app_env=%s",
@@ -382,12 +448,12 @@ def process_job(session: Session, job: Job) -> None:
             app_env,
         )
 
-    _advance(session, job, JobStatus.EXTRACTING_AUDIO, "Extracting audio", 20)
-    _advance(session, job, JobStatus.CHUNKING, "Chunking", 35)
-    _advance(session, job, JobStatus.TRANSCRIBING, "Transcribing", 50)
-    _advance(session, job, JobStatus.GENERATING_OUTPUTS, "Generating outputs", 72)
-    _advance(session, job, JobStatus.QA_VALIDATING, "QA validation", 88)
-    _advance(session, job, JobStatus.EXPORTING, "Writing outputs to object storage", 95)
+    _advance(session, job, JobStatus.PROCESSING, "Extracting audio", 20)
+    _advance(session, job, JobStatus.PROCESSING, "Chunking", 35)
+    _advance(session, job, JobStatus.PROCESSING, "Transcribing", 50)
+    _advance(session, job, JobStatus.PROCESSING, "Generating outputs", 72)
+    _advance(session, job, JobStatus.PROCESSING, "QA validation", 88)
+    _advance(session, job, JobStatus.PROCESSING, "Writing outputs to object storage", 95)
 
     media_inspection_payload: dict | None = None
     transcript_payload: dict | None = None
@@ -420,6 +486,8 @@ def process_job(session: Session, job: Job) -> None:
                 t_in,
                 openai_api_key=getattr(settings, "openai_api_key", "") or "",
             )
+        except JobProcessingFailure:
+            raise
         except Exception as exc:
             if skip_verify:
                 log.warning(
@@ -431,7 +499,10 @@ def process_job(session: Session, job: Job) -> None:
                 transcript_payload = None
             else:
                 log.exception("media_inspection_or_transcript_failed job_id=%s", job.id)
-                raise RuntimeError("media_inspection_or_transcript_failed") from exc
+                raise JobProcessingFailure(
+                    "media_processing_failed",
+                    "Media download, inspection, or transcript preparation failed.",
+                ) from exc
         finally:
             if local_video:
                 try:
@@ -454,9 +525,9 @@ def process_job(session: Session, job: Job) -> None:
         transcript_payload=transcript_payload,
     )
 
-    _settle_credits(session, job)
+    _settle_processing_allowance(session, job)
 
-    job.status = JobStatus.COMPLETE
+    job.status = JobStatus.COMPLETED
     job.completed_at = utcnow()
     job.progress_percent = 100
     job.current_stage = "Complete"
@@ -467,14 +538,15 @@ def process_job(session: Session, job: Job) -> None:
 def fail_job(session: Session, job: Job, code: str, message: str) -> None:
     job.status = JobStatus.FAILED
     job.failure_code = code
+    job.failure_reason = message
     job.failure_message = message
     session.add(job)
     session.commit()
 
-    amt = int(job.reserved_credits or 0)
+    amt = int(job.reserved_processing_minutes or 0)
     if amt:
         try:
-            release_reserved_credits(
+            release_reserved_processing_minutes(
                 session,
                 organisation_id=job.organisation_id,
                 job_id=job.id,
@@ -581,17 +653,33 @@ def main() -> None:
                     continue
                 try:
                     process_job(session, j)
-                except Exception as exc:
+                except JobProcessingFailure as jpf:
+                    log.warning("job_failed_expected job_id=%s code=%s", jid, jpf.code)
+                    session.rollback()
+                    with Session(engine) as session2:
+                        j2 = session2.get(Job, jid)
+                        if j2 and j2.status not in (
+                            JobStatus.COMPLETED,
+                            JobStatus.FAILED,
+                            JobStatus.CANCELLED,
+                        ):
+                            fail_job(session2, j2, jpf.code, jpf.message)
+                except Exception:
                     log.exception("job_failed job_id=%s", jid)
                     session.rollback()
                     with Session(engine) as session2:
                         j2 = session2.get(Job, jid)
                         if j2 and j2.status not in (
-                            JobStatus.COMPLETE,
+                            JobStatus.COMPLETED,
                             JobStatus.FAILED,
                             JobStatus.CANCELLED,
                         ):
-                            fail_job(session2, j2, "processing_error", str(exc))
+                            fail_job(
+                                session2,
+                                j2,
+                                "processing_error",
+                                "Unexpected worker error during processing.",
+                            )
             write_worker_heartbeat(engine, worker_id=worker_id)
         except Exception:
             log.exception("worker_iteration_failed")

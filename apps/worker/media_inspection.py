@@ -6,6 +6,7 @@ import subprocess
 from typing import Any
 
 from pipeline.chunk_plan import plan_chunks
+from pipeline.errors import JobProcessingFailure
 
 
 def run_ffprobe_json(path: str, *, ffprobe_binary: str | None = None) -> dict[str, Any]:
@@ -14,7 +15,7 @@ def run_ffprobe_json(path: str, *, ffprobe_binary: str | None = None) -> dict[st
         [
             binary,
             "-v",
-            "quiet",
+            "error",
             "-print_format",
             "json",
             "-show_format",
@@ -23,9 +24,21 @@ def run_ffprobe_json(path: str, *, ffprobe_binary: str | None = None) -> dict[st
         ],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
-    return json.loads(proc.stdout)
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()[:1500]
+        raise JobProcessingFailure(
+            "ffprobe_failed",
+            f"Media probe failed (exit {proc.returncode}). {err or 'No stderr from ffprobe.'}",
+        )
+    try:
+        return json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise JobProcessingFailure(
+            "ffprobe_invalid_json",
+            "ffprobe returned data that could not be parsed as JSON.",
+        ) from exc
 
 
 def inspect_media_file(path: str, *, ffprobe_binary: str | None = None) -> dict[str, Any]:

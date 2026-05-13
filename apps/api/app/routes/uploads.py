@@ -35,6 +35,7 @@ def presign_upload(
         organisation_id=organisation_id,
         original_filename=body.filename,
         media_type=mt,
+        upload_content_type=body.content_type,
         storage_source_key="pending",
         file_size_bytes=body.file_size_bytes,
         status=MediaAssetStatus.UPLOADED,

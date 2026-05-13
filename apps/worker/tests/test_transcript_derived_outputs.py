@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pipeline.transcript_derived_outputs import (
     build_chapters_from_transcript,
+    build_ctas_from_transcript,
     build_fact_sheet_from_transcript,
     build_faqs_from_transcript,
     build_hosted_manifest_from_transcript,
@@ -65,6 +66,9 @@ def test_faqs_include_duration_when_inspection_present() -> None:
     assert out["derived_from"] == "transcript_stub"
     questions = [f["question"] for f in out["faqs"]]
     assert any("long" in q.lower() for q in questions)
+    joined = " ".join(f["answer"] for f in out["faqs"]).lower()
+    assert "transcript_stub" not in joined
+    assert "paid ai" not in joined
 
 
 def test_metadata_technical_block() -> None:
@@ -73,6 +77,7 @@ def test_metadata_technical_block() -> None:
     assert out["derived_from"] == "transcript_stub"
     assert out["technical"]["video_codec"] == "h264"
     assert out["transcript"]["segment_count"] == 2
+    assert out["transcript"]["origin"] == "preview_from_upload"
     assert out["episode"]["display_title"]
     assert isinstance(out["tags"], list) and out["tags"]
 
@@ -80,7 +85,17 @@ def test_metadata_technical_block() -> None:
 def test_hosted_manifest_lists_outputs_and_meta() -> None:
     tr = _sample_transcript_stub()
     mi = _sample_media_inspection()
-    planned = ["raw_transcript", "chapters", "fact_sheet", "faqs", "metadata", "hosted_manifest", "media_inspection"]
+    planned = [
+        "raw_transcript",
+        "chapters",
+        "fact_sheet",
+        "faqs",
+        "metadata",
+        "ctas",
+        "hosted_manifest",
+        "media_inspection",
+        "export_bundle",
+    ]
     out = build_hosted_manifest_from_transcript(
         transcript=tr,
         media_inspection=mi,
@@ -95,16 +110,24 @@ def test_hosted_manifest_lists_outputs_and_meta() -> None:
     assert out["outputs_available"] == planned
     assert out["derived_from"] == "transcript_stub"
     assert out["transcript_meta"]["segment_count"] == 2
-    assert out["media_meta"]["audio_codec"] == "aac"
+    assert out["transcript_meta"]["source"] == "preview_from_upload"
+    assert "combined_preview" not in out["transcript_meta"]
     assert len(out["chapters"]) >= 1
     assert isinstance(out["topics"], list) and out["topics"]
     assert len(out["facts"]) >= 1
     assert len(out["faqs"]) >= 1
     assert "seo" in out and out["seo"].get("meta_title")
     assert out["ctas"] and out["ctas"][0].get("intent") == "read_transcript"
+    assert any(c.get("intent") == "view_chapters" for c in out["ctas"])
 
 
-def test_chapters_strip_internal_stub_noise() -> None:
+def test_ctas_document_shape() -> None:
+    tr = _sample_transcript_stub()
+    out = build_ctas_from_transcript(tr, _sample_media_inspection(), derived_from="transcript_stub")
+    assert out["schema_version"] == "1.0"
+    assert out["derived_from"] == "transcript_stub"
+    assert isinstance(out["ctas"], list) and len(out["ctas"]) >= 2
+    assert {c["intent"] for c in out["ctas"]} >= {"read_transcript", "share_episode"}
     tr = {
         "schema_version": "1.0",
         "source": "transcript_stub",
