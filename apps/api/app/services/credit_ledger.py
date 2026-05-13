@@ -49,7 +49,7 @@ def get_or_create_wallet(session: Session, organisation_id: str) -> CreditWallet
         return wallet
     wallet = CreditWallet(organisation_id=organisation_id)
     session.add(wallet)
-    session.commit()
+    session.flush()
     session.refresh(wallet)
     return wallet
 

@@ -10,6 +10,10 @@ from app.services.credit_ledger import get_or_create_wallet
 router = APIRouter(prefix="/account", tags=["account"])
 
 
+def _enum_str(v: object) -> str:
+    return v.value if hasattr(v, "value") else str(v)
+
+
 @router.get("/credits", response_model=AccountCreditsResponse)
 def get_credits(
     _: None = Depends(verify_internal_key),
@@ -17,17 +21,22 @@ def get_credits(
     session: Session = Depends(get_session),
 ) -> AccountCreditsResponse:
     wallet = get_or_create_wallet(session, organisation_id)
+    # Inner wallet helper used to commit mid-request; refresh so fields are not expired on read.
+    session.refresh(wallet)
     aa = annual_access_svc.get_latest_annual_access(session, organisation_id)
     if not aa:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="annual_access_not_configured",
         )
-    return AccountCreditsResponse(
-        annual_access_status=aa.status.value,
+    period_end = aa.period_end.date().isoformat() if aa.period_end else None
+    body = AccountCreditsResponse(
+        annual_access_status=_enum_str(aa.status),
         hosting_until=aa.hosting_until.date().isoformat() if aa.hosting_until else None,
         credits_available=wallet.balance_available,
         credits_reserved=wallet.balance_reserved,
         credits_spent_lifetime=wallet.balance_spent_lifetime,
-        next_credit_expiry=aa.period_end.date().isoformat(),
+        next_credit_expiry=period_end,
     )
+    session.commit()
+    return body

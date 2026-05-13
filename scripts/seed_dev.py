@@ -103,6 +103,20 @@ def seed() -> None:
                     included_credits=STARTING_CREDITS,
                 )
             )
+        else:
+            # Idempotent: bring existing row back to smoke-testable state without deleting history.
+            if aa.status != AnnualAccessStatus.ACTIVE:
+                aa.status = AnnualAccessStatus.ACTIVE
+            aa.plan_code = aa.plan_code or "creator_core"
+            if aa.period_end is None or aa.period_end < now:
+                aa.period_end = period_end
+            if aa.period_start is None:
+                aa.period_start = now
+            if aa.hosting_until is None or aa.hosting_until < now:
+                aa.hosting_until = aa.period_end
+            if aa.included_credits < STARTING_CREDITS:
+                aa.included_credits = STARTING_CREDITS
+            session.add(aa)
 
         wallet = session.exec(select(CreditWallet).where(CreditWallet.organisation_id == ORG_ID)).first()
         if wallet is None:
