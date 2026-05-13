@@ -28,6 +28,13 @@ def run_ffprobe_json(path: str, *, ffprobe_binary: str | None = None) -> dict[st
     return json.loads(proc.stdout)
 
 
+def inspect_media_file(path: str, *, ffprobe_binary: str | None = None) -> dict[str, Any]:
+    """Run ffprobe + size; return media_inspection.json payload."""
+    size = os.path.getsize(path)
+    raw = run_ffprobe_json(path, ffprobe_binary=ffprobe_binary)
+    return build_media_inspection_payload(raw, file_size_bytes=size)
+
+
 def build_media_inspection_payload(ffprobe_doc: dict[str, Any], *, file_size_bytes: int) -> dict[str, Any]:
     fmt = ffprobe_doc.get("format") or {}
     duration_raw = fmt.get("duration")

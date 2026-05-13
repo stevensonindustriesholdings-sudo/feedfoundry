@@ -46,7 +46,9 @@ from app.services.storage import (  # noqa: E402
 )
 from app.settings import get_settings  # noqa: E402
 
-from media_inspection import build_media_inspection_payload, run_ffprobe_json  # noqa: E402
+from media_inspection import inspect_media_file  # noqa: E402
+from pipeline.audio_extraction import run_audio_extraction  # noqa: E402
+from pipeline.transcript import TranscriptPipelineInput, run_transcript_pipeline_v0  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("feedfoundry.worker")
@@ -157,6 +159,7 @@ def _write_stub_outputs(
     media: MediaAsset,
     *,
     media_inspection_payload: dict | None = None,
+    transcript_payload: dict | None = None,
 ) -> None:
     settings = get_settings()
     out_bucket = bucket_for_outputs(settings)
@@ -176,7 +179,10 @@ def _write_stub_outputs(
     }
 
     for filename, output_type, payload_template in STUB_OUTPUT_SPECS:
-        payload = dict(payload_template)
+        if output_type == JobOutputType.RAW_TRANSCRIPT and transcript_payload is not None:
+            payload = dict(transcript_payload)
+        else:
+            payload = dict(payload_template)
         if output_type == JobOutputType.HOSTED_MANIFEST:
             if media.creator_slug:
                 payload["creator_slug"] = media.creator_slug
@@ -278,37 +284,6 @@ def _wait_for_source_object(
     return False
 
 
-def _build_media_inspection_payload(
-    *,
-    settings,
-    src_bucket: str,
-    media: MediaAsset,
-) -> dict | None:
-    """Return ffprobe-derived inspection dict, or None when S3 is unavailable."""
-    if _s3_client(settings) is None:
-        log.info("skip_media_inspection_no_s3_client media_asset_id=%s", media.id)
-        return None
-    suffix = os.path.splitext(media.original_filename or "")[1] or ".mp4"
-    tmp_path: str | None = None
-    try:
-        tmp_path = download_object_to_tempfile(
-            bucket=src_bucket,
-            key=media.storage_source_key,
-            settings=settings,
-            suffix=suffix,
-        )
-        ffprobe_bin = os.environ.get("FFPROBE_BINARY", "ffprobe")
-        raw = run_ffprobe_json(tmp_path, ffprobe_binary=ffprobe_bin)
-        size = os.path.getsize(tmp_path)
-        return build_media_inspection_payload(raw, file_size_bytes=size)
-    finally:
-        if tmp_path:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-
-
 def process_job(session: Session, job: Job) -> None:
     settings = get_settings()
     media = session.get(MediaAsset, job.media_asset_id)
@@ -357,26 +332,69 @@ def process_job(session: Session, job: Job) -> None:
     _advance(session, job, JobStatus.EXPORTING, "Writing outputs to object storage", 95)
 
     media_inspection_payload: dict | None = None
+    transcript_payload: dict | None = None
+    local_video: str | None = None
+    wav_path: str | None = None
     if can_head and not missing_source_continued:
         try:
-            media_inspection_payload = _build_media_inspection_payload(
-                settings=settings, src_bucket=src_bucket, media=media
+            suffix = os.path.splitext(media.original_filename or "")[1] or ".mp4"
+            local_video = download_object_to_tempfile(
+                bucket=src_bucket,
+                key=media.storage_source_key,
+                settings=settings,
+                suffix=suffix,
+            )
+            ffprobe_bin = os.environ.get("FFPROBE_BINARY", "ffprobe")
+            media_inspection_payload = inspect_media_file(local_video, ffprobe_binary=ffprobe_bin)
+            wav_path, audio_meta = run_audio_extraction(
+                input_path=local_video,
+                ffmpeg_binary=os.environ.get("FFMPEG_BINARY"),
+                ffprobe_binary=ffprobe_bin,
+            )
+            t_in = TranscriptPipelineInput(
+                job_id=job.id,
+                media_asset_id=media.id,
+                audio_wav_path=wav_path,
+                audio_extraction=audio_meta,
+                media_inspection=media_inspection_payload,
+            )
+            transcript_payload = run_transcript_pipeline_v0(
+                t_in,
+                openai_api_key=getattr(settings, "openai_api_key", "") or "",
             )
         except Exception as exc:
             if skip_verify:
                 log.warning(
-                    "skip_media_inspection_after_error job_id=%s err=%s",
+                    "skip_media_inspection_or_transcript_after_error job_id=%s err=%s",
                     job.id,
                     exc,
                 )
                 media_inspection_payload = None
+                transcript_payload = None
             else:
-                log.exception("media_inspection_failed job_id=%s", job.id)
-                raise RuntimeError("media_inspection_failed") from exc
+                log.exception("media_inspection_or_transcript_failed job_id=%s", job.id)
+                raise RuntimeError("media_inspection_or_transcript_failed") from exc
+        finally:
+            if local_video:
+                try:
+                    os.unlink(local_video)
+                except OSError:
+                    pass
+            if wav_path:
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
     elif missing_source_continued:
         log.info("skip_media_inspection_staging_missing_source job_id=%s", job.id)
 
-    _write_stub_outputs(session, job, media, media_inspection_payload=media_inspection_payload)
+    _write_stub_outputs(
+        session,
+        job,
+        media,
+        media_inspection_payload=media_inspection_payload,
+        transcript_payload=transcript_payload,
+    )
 
     _settle_credits(session, job)
 

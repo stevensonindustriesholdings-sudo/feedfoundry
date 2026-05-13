@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     git_commit: str = ""
     build_timestamp: str = ""
 
+    # Optional OpenAI (worker transcript v0 — Whisper); leave unset to use transcript_stub
+    openai_api_key: str = ""
+
     # Worker-related (API logs readiness; worker reads same env names)
     worker_poll_interval_seconds: int = 5
     storage_provider: str = "r2"

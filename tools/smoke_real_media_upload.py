@@ -234,6 +234,32 @@ def main() -> int:
         f"v={doc.get('video_codec')} a={doc.get('audio_codec')} size={doc.get('file_size_bytes')} "
         f"chunks={len(doc['chunk_plan'])}",
     )
+
+    if "raw_transcript" not in types:
+        print("FAIL: raw_transcript missing", file=sys.stderr)
+        return 1
+    tr = next(o for o in outs if o.get("type") == "raw_transcript")
+    tr_url = tr.get("download_url") or ""
+    if not tr_url:
+        print("FAIL: raw_transcript missing download_url", file=sys.stderr)
+        return 1
+    tcode, tbody = _get_url(tr_url, timeout=60.0)
+    if tcode != 200:
+        print(f"FAIL: fetch transcript http={tcode}", file=sys.stderr)
+        return 1
+    tdoc = json.loads(tbody.decode("utf-8"))
+    for k in ("schema_version", "source", "audio_extraction", "segments"):
+        if k not in tdoc:
+            print(f"FAIL: transcript missing key {k}", file=sys.stderr)
+            return 1
+    if not isinstance(tdoc["segments"], list) or not tdoc["segments"]:
+        print("FAIL: transcript segments invalid", file=sys.stderr)
+        return 1
+    ae = tdoc["audio_extraction"]
+    if "schema_version" not in ae or "has_audio_stream" not in ae:
+        print("FAIL: audio_extraction metadata incomplete", file=sys.stderr)
+        return 1
+    print(f"PASS: transcript v0 source={tdoc.get('source')} has_audio={ae.get('has_audio_stream')}")
     return 0
 
 
