@@ -33,12 +33,37 @@ from app.services import annual_access as annual_access_svc
 from app.services.credit_ledger import (
     CreditLedgerError,
     ledger_reserve_key,
+    release_reserved_processing_minutes,
     reserve_processing_minutes,
 )
 from app.services import job_estimator
 from app.settings import get_settings
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+# Job statuses that may be cancelled by an API caller. Anything else is either
+# already CANCELLED (handled idempotently) or terminal (409 job_already_terminal).
+_CANCELLABLE_STATUSES = {JobStatus.UPLOADED, JobStatus.QUEUED, JobStatus.PROCESSING}
+
+
+def _job_status_response(job: Job) -> JobStatusResponse:
+    """Build a canonical job status response (PM canonical + deprecated *_credits aliases)."""
+    est = job.estimated_processing_minutes
+    resv = job.reserved_processing_minutes
+    charged = job.actual_processing_minutes_charged
+    return JobStatusResponse(
+        job_id=job.id,
+        status=job.status.value,
+        progress_percent=job.progress_percent,
+        current_stage=job.current_stage,
+        estimated_processing_minutes=est,
+        reserved_processing_minutes=resv,
+        actual_processing_minutes_charged=charged,
+        estimated_processing_hours=processing_minutes_to_approx_hours(est),
+        estimated_credits=est,
+        reserved_credits=resv,
+        actual_credits_so_far=charged,
+    )
 
 
 @router.get("", response_model=JobListResponse)
@@ -190,20 +215,64 @@ def get_job(
             code="job_not_found",
             message="Job not found for this organisation.",
         )
-    est = job.estimated_processing_minutes
-    resv = job.reserved_processing_minutes
-    charged = job.actual_processing_minutes_charged
-    return JobStatusResponse(
-        job_id=job.id,
-        status=job.status.value,
-        progress_percent=job.progress_percent,
-        current_stage=job.current_stage,
-        estimated_processing_minutes=est,
-        reserved_processing_minutes=resv,
-        actual_processing_minutes_charged=charged,
-        estimated_processing_hours=processing_minutes_to_approx_hours(est),
-        # Deprecated aliases preserved one release.
-        estimated_credits=est,
-        reserved_credits=resv,
-        actual_credits_so_far=charged,
-    )
+    return _job_status_response(job)
+
+
+@router.post("/{job_id}/cancel", response_model=JobStatusResponse)
+def cancel_job(
+    job_id: str,
+    _: None = Depends(verify_internal_key),
+    organisation_id: str = Depends(require_organisation_id),
+    session: Session = Depends(get_session),
+) -> JobStatusResponse:
+    """
+    Cancel a non-terminal job. Releases any reserved processing minutes that
+    have not yet been charged (failed/cancelled jobs must not consume the
+    annual processing allowance). Idempotent: cancelling an already-cancelled
+    job returns 200 with the current state; cancelling a completed or failed
+    job returns 409 ``job_already_terminal``.
+    """
+    job = session.get(Job, job_id)
+    if not job or job.organisation_id != organisation_id:
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="job_not_found",
+            message="Job not found for this organisation.",
+        )
+
+    if job.status == JobStatus.CANCELLED:
+        return _job_status_response(job)
+
+    if job.status not in _CANCELLABLE_STATUSES:
+        raise problem(
+            status_code=status.HTTP_409_CONFLICT,
+            code="job_already_terminal",
+            message=f"Job is already in terminal state '{job.status.value}'.",
+        )
+
+    reserved = int(job.reserved_processing_minutes or 0)
+    charged = int(job.actual_processing_minutes_charged or 0)
+
+    job.status = JobStatus.CANCELLED
+    session.add(job)
+
+    if reserved > 0 and charged == 0:
+        try:
+            release_reserved_processing_minutes(
+                session,
+                organisation_id=organisation_id,
+                job_id=job.id,
+                amount=reserved,
+                idempotency_key=f"ff:job:{job.id}:cancel",
+            )
+        except CreditLedgerError as e:
+            session.rollback()
+            raise problem(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                code="processing_allowance_release_failed",
+                message=f"Could not release reserved processing minutes on cancel: {e}",
+            )
+
+    session.commit()
+    session.refresh(job)
+    return _job_status_response(job)
