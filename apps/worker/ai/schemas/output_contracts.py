@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Final, Type
+from typing import Any, Final, Literal, Optional, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -103,11 +103,54 @@ class VisualScene(BaseModel):
     end_ms: int = Field(ge=0)
 
 
-class VisualAnalysisReportPayload(BaseModel):
+class KeyframeSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    frame_id: str
+    t_ms: int = Field(ge=0)
+    summary: str
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class OCRItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ocr_source_id: str
+    t_ms: int = Field(ge=0)
+    text_snippet: str
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class VisualEvidenceItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    frame_id: str
+    t_ms: int = Field(ge=0)
+    description: str
+    ocr_source_id: Optional[str] = None
+    product_image_id: Optional[str] = None
+
+
+class VisualMismatchFlag(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    detail: str
+    severity: Literal["low", "medium", "high"] = "low"
+
+
+class VisualAnalysisReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scenes: list[VisualScene]
     dominant_colors: list[str] = Field(default_factory=list)
+    keyframe_summaries: list[KeyframeSummary] = Field(default_factory=list)
+    ocr_items: list[OCRItem] = Field(default_factory=list)
+    visual_evidence: list[VisualEvidenceItem] = Field(default_factory=list)
+    mismatch_flags: list[VisualMismatchFlag] = Field(default_factory=list)
+
+
+VisualAnalysisReportPayload = VisualAnalysisReport
 
 
 PRODUCT_SIGNAL_REPORT_SCHEMA_NAME: Final[str] = "feedfoundry.outputs.product_signal_report"
@@ -121,10 +164,68 @@ class ProductSignal(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
-class ProductSignalReportPayload(BaseModel):
+class ProductCommerceClaimStatus(str, Enum):
+    """Explicit non-assertive states — no definitive commerce claims in V1 skeleton."""
+
+    UNKNOWN = "unknown"
+    DEFERRED = "deferred"
+    LOW_CONFIDENCE = "low_confidence"
+
+
+class ProductItemCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    signals: list[ProductSignal]
+    candidate_id: str
+    name_stub: str
+    title_claim_status: ProductCommerceClaimStatus = ProductCommerceClaimStatus.UNKNOWN
+    price_status: ProductCommerceClaimStatus = ProductCommerceClaimStatus.UNKNOWN
+    availability_status: ProductCommerceClaimStatus = ProductCommerceClaimStatus.UNKNOWN
+    external_link_status: ProductCommerceClaimStatus = ProductCommerceClaimStatus.DEFERRED
+
+
+class ProductVisualEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_image_id: str
+    frame_id: Optional[str] = None
+    t_ms: Optional[int] = Field(default=None, ge=0)
+    notes: str = ""
+
+
+class ProductToContentAssociation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    association_id: str
+    candidate_id: str
+    content_anchor_ms: int = Field(ge=0)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ProductGridQualityIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+
+
+class ProductGridQualityReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    score: float = Field(ge=0.0, le=1.0)
+    issues: list[ProductGridQualityIssue] = Field(default_factory=list)
+
+
+class ProductSignalReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    signals: list[ProductSignal] = Field(default_factory=list)
+    item_candidates: list[ProductItemCandidate] = Field(default_factory=list)
+    product_visual_evidence: list[ProductVisualEvidence] = Field(default_factory=list)
+    associations: list[ProductToContentAssociation] = Field(default_factory=list)
+    grid_quality: Optional[ProductGridQualityReport] = None
+
+
+ProductSignalReportPayload = ProductSignalReport
 
 
 VERIFICATION_REPORT_SCHEMA_NAME: Final[str] = "feedfoundry.outputs.verification_report"
@@ -172,8 +273,8 @@ SCHEMA_REGISTRY: dict[tuple[str, str], Type[BaseModel]] = {
         HOSTED_MANIFEST_ENRICHMENT_SCHEMA_NAME,
         HOSTED_MANIFEST_ENRICHMENT_SCHEMA_VERSION,
     ): HostedManifestEnrichmentPayload,
-    (VISUAL_ANALYSIS_REPORT_SCHEMA_NAME, VISUAL_ANALYSIS_REPORT_SCHEMA_VERSION): VisualAnalysisReportPayload,
-    (PRODUCT_SIGNAL_REPORT_SCHEMA_NAME, PRODUCT_SIGNAL_REPORT_SCHEMA_VERSION): ProductSignalReportPayload,
+    (VISUAL_ANALYSIS_REPORT_SCHEMA_NAME, VISUAL_ANALYSIS_REPORT_SCHEMA_VERSION): VisualAnalysisReport,
+    (PRODUCT_SIGNAL_REPORT_SCHEMA_NAME, PRODUCT_SIGNAL_REPORT_SCHEMA_VERSION): ProductSignalReport,
     (VERIFICATION_REPORT_SCHEMA_NAME, VERIFICATION_REPORT_SCHEMA_VERSION): VerificationReportPayload,
     (OUTPUT_QUALITY_REPORT_SCHEMA_NAME, OUTPUT_QUALITY_REPORT_SCHEMA_VERSION): OutputQualityReportPayload,
 }
