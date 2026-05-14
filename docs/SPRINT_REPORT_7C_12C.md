@@ -7,7 +7,7 @@
 ## Sprint report
 
 **Branch name:** `phase7/integration-7c1-ai-skeleton`  
-**Commit hash:** *(updated at commit; see `git log -1` on branch tip after push)*
+**Commit hash:** `9933161584daf9c95e10e13e39475bc40196177b`
 
 **Files changed:**
 
