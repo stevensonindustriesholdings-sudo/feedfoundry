@@ -103,6 +103,8 @@ PYTHONPATH=../api:. python worker.py
 
 `PYTHONPATH` must include `apps/api` so the worker can import `app.*` and share the processing-minute ledger.
 
+OpenAI structured canary **preflight** (env gates only; no HTTP, no DB writes): see [docs/phase7-openai-canary.md](docs/phase7-openai-canary.md). Example: `PYTHONPATH=../api:. python -m ai.canary_runner --fixture tiny_transcript --dry-run`.
+
 ### 7. Run tests
 
 ```bash

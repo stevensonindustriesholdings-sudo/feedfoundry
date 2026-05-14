@@ -42,6 +42,25 @@ Machine-readable prefixes appear in `ProviderDisabledError` messages as `[code] 
 
 After HTTP is attempted, transport failures use `CanaryRuntimeCode` values such as `openai_canary_http_auth`, `openai_canary_http_rate_limit`, `openai_canary_http_timeout`, `openai_canary_http_malformed_response`, etc. Legacy `openai_canary_adapter_http_not_wired` remains for unexpected `RuntimeError` paths outside the typed adapter.
 
+## Manual CLI preflight (Gate A — no HTTP)
+
+From `apps/worker` with API models on the path:
+
+```bash
+cd apps/worker
+PYTHONPATH=../api:. python -m ai.canary_runner --fixture tiny_transcript --dry-run
+```
+
+`--preflight` is an alias for `--dry-run`. Refuses unless **all** canary HTTP gates pass (same checks as `check_openai_responses_http_gates_or_raise`); prints a **redacted** JSON summary only — no `POST /v1/responses`, no `AIRun` / `AIStageLog`, no ledger.
+
+**Non–dry-run** (would issue real HTTP when unmocked — captain phrase required for operational use):
+
+```bash
+PYTHONPATH=../api:. python -m ai.canary_runner --fixture tiny_transcript --job-id '<job_uuid>'
+```
+
+Requires `DATABASE_URL` and an existing `Job` row. Default operational practice: use `--dry-run` in CI and for Gate A; first live canary only after explicit captain approval (`GO LIVE CANARY`).
+
 ## Tiny canary runner (synthetic fixture only)
 
 Separate from `FF_WORKER_AI_ENRICHMENT_ENABLED`:

@@ -12,7 +12,12 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from ai.canary_error_codes import CanaryFailClosedCode, CanaryRuntimeCode
-from ai.canary_runner import maybe_run_openai_canary_job_runner, openai_canary_runner_enabled
+from ai.canary_runner import (
+    cli_main,
+    manual_run_openai_canary_preflight,
+    maybe_run_openai_canary_job_runner,
+    openai_canary_runner_enabled,
+)
 from ai.provider_mode import ProviderDisabledError, StructuredProviderMode, resolve_structured_provider_mode
 from ai.registry import get_structured_ai_provider
 from ai.types import AICompletionRequest, AICompletionResponse
@@ -365,3 +370,91 @@ def test_runner_calls_bounded_http_once_with_mocked_transport(monkeypatch: pytes
         with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
             maybe_run_openai_canary_job_runner(session, job)
         inner.post.assert_called_once()
+
+
+def test_cli_dry_run_fail_closed_without_gates(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AI_STRUCTURED_PROVIDER_MODE", raising=False)
+    monkeypatch.setenv("AI_ENABLE_MOCK_PROVIDER", "true")
+    rc = cli_main(["--dry-run", "--fixture", "tiny_transcript"])
+    assert rc == 1
+
+
+def test_cli_dry_run_ok_prints_redacted_json(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
+    _canary_env(monkeypatch)
+    rc = cli_main(["--preflight", "--fixture", "tiny_transcript"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "tiny_transcript" in out
+    assert "present" in out
+    assert "sk-" not in out
+
+
+def test_cli_preflight_alias_matches_dry_run(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
+    _canary_env(monkeypatch)
+    assert cli_main(["--dry-run", "--fixture", "tiny_transcript"]) == 0
+    assert cli_main(["--preflight", "--fixture", "tiny_transcript"]) == 0
+
+
+def test_manual_preflight_dry_run_returns_summary_dict(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
+    _canary_env(monkeypatch)
+    d = manual_run_openai_canary_preflight(dry_run=True, fixture_id="tiny_transcript", session=None, job=None)
+    assert d is not None
+    assert d.get("dry_run") is True
+    assert d.get("fixture_id") == "tiny_transcript"
+
+
+def test_manual_preflight_non_dry_patched_complete(monkeypatch: pytest.MonkeyPatch, sqlite_engine):
+    monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    _canary_env(monkeypatch)
+
+    def fake_complete(_self: object, _req: AICompletionRequest) -> AICompletionResponse:
+        return AICompletionResponse(
+            parsed_json={
+                "title": "Canary",
+                "summary": "Synthetic fixture summary.",
+                "key_facts": ["a", "b"],
+            },
+            raw_text=None,
+            input_tokens=12,
+            output_tokens=34,
+            cost_estimate=0.001,
+            latency_ms=1,
+            provider_request_id="test-req",
+            finish_reason="stop",
+            provider_name="openai",
+        )
+
+    org_id, job_id, ma_id = "org_cli_ok", "job_cli_ok", "ma_cli_ok"
+    with Session(sqlite_engine) as session:
+        job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
+        from ai.openai_adapter import OpenAIStructuredProviderShell
+
+        with patch.object(OpenAIStructuredProviderShell, "complete", fake_complete):
+            manual_run_openai_canary_preflight(
+                dry_run=False,
+                fixture_id="tiny_transcript",
+                session=session,
+                job=job,
+            )
+        runs = session.exec(select(AIRun).where(AIRun.job_id == job_id)).all()
+        assert len(runs) == 1
+        assert runs[0].status == "completed"
+
+
+def test_cli_non_dry_requires_job_id(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
+    _canary_env(monkeypatch)
+    assert cli_main([]) == 2
+
+
+def test_cli_unknown_fixture_argv_errors():
+    with pytest.raises(SystemExit):
+        cli_main(["--fixture", "nope", "--dry-run"])

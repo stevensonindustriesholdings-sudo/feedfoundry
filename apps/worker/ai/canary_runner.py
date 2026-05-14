@@ -2,12 +2,18 @@
 
 Requires ``FF_OPENAI_CANARY_RUNNER_ENABLED=true`` **plus** full structured OpenAI canary
 gates (see ``docs/phase7-openai-canary.md``). Independent of ``FF_WORKER_AI_ENRICHMENT_ENABLED``.
+
+Manual preflight (no HTTP, Gate A): ``python -m ai.canary_runner --fixture tiny_transcript --dry-run``
+from ``apps/worker`` with ``PYTHONPATH=../api:.`` (see docs).
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,17 +23,21 @@ from ai.canary_error_codes import CanaryRuntimeCode
 from ai.openai_adapter import OpenAIHTTPAdapterError
 from ai.modules.output_validator import OutputValidator, ValidationStatus
 from ai.modules.transcript_intelligence import chunks_from_plain_text
+from ai.openai_canary_gates import check_openai_responses_http_gates_or_raise
+from ai.provider import AIProvider
 from ai.provider_mode import ProviderDisabledError
 from ai.registry import get_structured_ai_provider
 from ai.schemas.output_contracts import FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION
 from ai.transcript_context import TranscriptChunkInput
 from ai.types import AICompletionRequest
 from app.models import AIRun, AIStageLog, Job, utcnow
+from app.services.ai_internal_policy import load_ai_canary_gate_config_from_env
 
 log = logging.getLogger("feedfoundry.worker.ai.canary_runner")
 
 ENV_OPENAI_CANARY_RUNNER = "FF_OPENAI_CANARY_RUNNER_ENABLED"
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "canary_synthetic_transcript.txt"
+FIXTURE_TINY_TRANSCRIPT = "tiny_transcript"
 CANARY_STAGE = "openai_canary_synthetic"
 
 
@@ -41,8 +51,44 @@ def openai_canary_runner_enabled() -> bool:
     return _truthy_env(os.environ.get(ENV_OPENAI_CANARY_RUNNER))
 
 
-def _load_fixture_plain_text() -> str:
-    return FIXTURE_PATH.read_text(encoding="utf-8").strip()
+def fixture_path_for_id(fixture_id: str) -> Path:
+    if fixture_id == FIXTURE_TINY_TRANSCRIPT:
+        return FIXTURE_PATH
+    raise ValueError(f"Unknown fixture_id={fixture_id!r}; supported: {FIXTURE_TINY_TRANSCRIPT!r}")
+
+
+def redacted_openai_canary_preflight_summary(*, fixture_id: str) -> dict[str, Any]:
+    """Ops-safe snapshot for ``--dry-run`` (no secrets, no bodies)."""
+
+    cfg = load_ai_canary_gate_config_from_env()
+    key = os.environ.get("OPENAI_API_KEY") or ""
+    base = (os.environ.get("OPENAI_BASE_URL") or "").strip()
+    retries_raw = os.environ.get("AI_CANARY_HTTP_MAX_RETRIES", "0") or "0"
+    try:
+        retries = int(retries_raw)
+    except ValueError:
+        retries = -1
+    return {
+        "fixture_id": fixture_id,
+        "fixture_file": fixture_path_for_id(fixture_id).name,
+        "AI_STRUCTURED_PROVIDER_MODE": os.environ.get("AI_STRUCTURED_PROVIDER_MODE"),
+        "AI_PROVIDER": (os.environ.get("AI_PROVIDER") or "").strip() or None,
+        "AI_ENABLE_MOCK_PROVIDER": os.environ.get("AI_ENABLE_MOCK_PROVIDER"),
+        "AI_CANARY_ENABLED": cfg.canary_enabled,
+        "AI_ENABLE_REAL_PROVIDER": cfg.real_provider_enabled,
+        "AI_CANARY_MAX_CALLS": cfg.max_calls,
+        "AI_CANARY_MAX_COST": cfg.max_cost,
+        "AI_CANARY_TIMEOUT_SECONDS": cfg.timeout_seconds,
+        "AI_CANARY_HTTP_MAX_RETRIES": retries,
+        "FF_OPENAI_CANARY_RUNNER_ENABLED": openai_canary_runner_enabled(),
+        "OPENAI_API_KEY": "present" if bool(key.strip()) else "absent",
+        "OPENAI_BASE_URL_set": bool(base),
+        "AI_MODEL": (os.environ.get("AI_MODEL") or "").strip() or None,
+    }
+
+
+def _load_fixture_plain_text(fixture_path: Path) -> str:
+    return fixture_path.read_text(encoding="utf-8").strip()
 
 
 def _input_bundle_for_chunk(chunk: TranscriptChunkInput, *, episode_title: str | None) -> dict[str, Any]:
@@ -98,20 +144,17 @@ def _append_stage_log(
     session.commit()
 
 
-def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
-    """If runner + OpenAI canary gates pass, run one factsheet call on **fixture** text only."""
+def run_openai_canary_fixture_pipeline(
+    session: Session,
+    job: Job,
+    prov: AIProvider,
+    *,
+    fixture_path: Path | None = None,
+) -> None:
+    """One factsheet structured call on **fixture** text only; persists AIRun / AIStageLog."""
 
-    if not openai_canary_runner_enabled():
-        return
-    try:
-        prov = get_structured_ai_provider()
-    except ProviderDisabledError as exc:
-        log.info("openai_canary_runner_skipped job_id=%s reason=%s", job.id, exc)
-        return
-    if prov.name != "openai":
-        return
-
-    text = _load_fixture_plain_text()
+    path = fixture_path or FIXTURE_PATH
+    text = _load_fixture_plain_text(path)
     chunks = chunks_from_plain_text(text, max_chars=1200, overlap=80)
     if not chunks:
         log.warning("openai_canary_runner_empty_fixture job_id=%s", job.id)
@@ -160,6 +203,7 @@ def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
         cost_cap=0.0,
         trace_id=f"{job.id}:openai-canary:fixture",
     )
+    extra_fixture = {"fixture": path.name}
     try:
         resp = prov.complete(req)
         t1 = utcnow()
@@ -186,7 +230,7 @@ def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
                 error_code="openai_canary_output_validation",
                 error_message=str(vres.errors)[:2048],
                 provider_request_id=resp.provider_request_id,
-                extra_json={"fixture": FIXTURE_PATH.name},
+                extra_json=extra_fixture,
             )
             _finish("failed", error_code="openai_canary_output_validation", error_message=str(vres.errors))
             return
@@ -207,7 +251,7 @@ def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
             error_code=None,
             error_message=None,
             provider_request_id=resp.provider_request_id,
-            extra_json={"fixture": FIXTURE_PATH.name},
+            extra_json=extra_fixture,
         )
         _finish("completed")
     except OpenAIHTTPAdapterError as exc:
@@ -230,7 +274,7 @@ def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
             error_code=code,
             error_message=str(exc)[:2048],
             provider_request_id=None,
-            extra_json={"fixture": FIXTURE_PATH.name, "adapter": "http"},
+            extra_json={**extra_fixture, "adapter": "http"},
         )
         _finish("failed", error_code=code, error_message=str(exc))
     except RuntimeError as exc:
@@ -253,6 +297,119 @@ def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
             error_code=code,
             error_message=str(exc)[:2048],
             provider_request_id=None,
-            extra_json={"fixture": FIXTURE_PATH.name, "adapter": "shell"},
+            extra_json={**extra_fixture, "adapter": "shell"},
         )
         _finish("failed", error_code=code, error_message=str(exc))
+
+
+def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
+    """If runner + OpenAI canary gates pass, run one factsheet call on **fixture** text only."""
+
+    if not openai_canary_runner_enabled():
+        return
+    try:
+        prov = get_structured_ai_provider()
+    except ProviderDisabledError as exc:
+        log.info("openai_canary_runner_skipped job_id=%s reason=%s", job.id, exc)
+        return
+    if prov.name != "openai":
+        return
+
+    run_openai_canary_fixture_pipeline(session, job, prov)
+
+
+def manual_run_openai_canary_preflight(
+    *,
+    dry_run: bool,
+    fixture_id: str,
+    session: Session | None,
+    job: Job | None,
+) -> dict[str, Any] | None:
+    """Fail closed via :func:`check_openai_responses_http_gates_or_raise`.
+
+    When ``dry_run`` is True, returns a redacted summary dict and performs no HTTP or DB writes.
+    When ``dry_run`` is False, requires ``session`` and ``job`` and runs
+    :func:`run_openai_canary_fixture_pipeline` (HTTP unless transport is mocked).
+    """
+
+    check_openai_responses_http_gates_or_raise()
+    prov = get_structured_ai_provider()
+    if prov.name != "openai":
+        raise ProviderDisabledError("structured provider is not openai after canary gates")
+    fixture_path = fixture_path_for_id(fixture_id)
+    if dry_run:
+        summary = redacted_openai_canary_preflight_summary(fixture_id=fixture_id)
+        summary["dry_run"] = True
+        summary["would_call_http"] = True
+        summary["hint"] = "Gate A: use --dry-run for preflight; live HTTP requires explicit captain approval phrase."
+        return summary
+
+    if session is None or job is None:
+        raise ValueError("session and job are required when dry_run is False")
+    run_openai_canary_fixture_pipeline(session, job, prov, fixture_path=fixture_path)
+    return None
+
+
+def cli_main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=os.environ.get("AI_LOG_LEVEL", "INFO"))
+    p = argparse.ArgumentParser(description="OpenAI structured canary (synthetic fixture only).")
+    p.add_argument(
+        "--fixture",
+        default=FIXTURE_TINY_TRANSCRIPT,
+        choices=[FIXTURE_TINY_TRANSCRIPT],
+        help="Synthetic fixture id (default: tiny_transcript).",
+    )
+    p.add_argument("--dry-run", action="store_true", help="Preflight: gates + redacted summary; no HTTP or DB.")
+    p.add_argument("--preflight", action="store_true", help="Alias for --dry-run.")
+    p.add_argument(
+        "--job-id",
+        default=None,
+        help="Job UUID for AIRun attachment (required when not using --dry-run / --preflight).",
+    )
+    args = p.parse_args(argv)
+    dry = bool(args.dry_run or args.preflight)
+
+    try:
+        if dry:
+            summary = manual_run_openai_canary_preflight(
+                dry_run=True,
+                fixture_id=args.fixture,
+                session=None,
+                job=None,
+            )
+            print(json.dumps(summary, indent=2, sort_keys=True))
+            return 0
+
+        if not args.job_id:
+            print("error: --job-id is required without --dry-run", file=sys.stderr)
+            return 2
+        db_url = (os.environ.get("DATABASE_URL") or "").strip()
+        if not db_url:
+            print("error: DATABASE_URL is required for non-dry-run", file=sys.stderr)
+            return 2
+
+        from sqlalchemy import create_engine
+
+        engine = create_engine(db_url, pool_pre_ping=True)
+        with Session(engine) as session:
+            row = session.get(Job, args.job_id)
+            if row is None:
+                print(f"error: job not found: {args.job_id}", file=sys.stderr)
+                return 2
+            manual_run_openai_canary_preflight(
+                dry_run=False,
+                fixture_id=args.fixture,
+                session=session,
+                job=row,
+            )
+        return 0
+    except ProviderDisabledError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main())
