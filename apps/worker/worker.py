@@ -46,6 +46,7 @@ from app.services.storage import (  # noqa: E402
 )
 from app.settings import get_settings  # noqa: E402
 
+from ai.pipeline import maybe_run_mock_ai_job_enrichment  # noqa: E402
 from media_inspection import inspect_media_file  # noqa: E402
 from pipeline.audio_extraction import run_audio_extraction  # noqa: E402
 from pipeline.errors import JobProcessingFailure  # noqa: E402
@@ -523,6 +524,13 @@ def process_job(session: Session, job: Job) -> None:
         media,
         media_inspection_payload=media_inspection_payload,
         transcript_payload=transcript_payload,
+    )
+
+    maybe_run_mock_ai_job_enrichment(
+        session,
+        job,
+        transcript_payload=transcript_payload,
+        media_inspection_payload=media_inspection_payload,
     )
 
     _settle_processing_allowance(session, job)
