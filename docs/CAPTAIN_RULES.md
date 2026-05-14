@@ -53,6 +53,18 @@ When explicitly approved as its own sprint:
 
 - Use `docs/REPORT_TEMPLATE.md` for sprint reports.
 - Run `scripts/sprint_report.sh` before opening a PR to capture branch, commit, and diff context (see script header for options).
+- Prefer **`scripts/sprint_runner.sh`** for Sprint Runner Mode: `checkpoint` → `guard` → `report`, or `all` (see script header). Use it at sprint start, before commit/push, and in the final paste-back to Captain.
+
+## Autonomy Level 1.5 (Sprint Runner Mode)
+
+Aligns with `AGENTS.md` — summarized here for captains and agents.
+
+- **Batch safe local commands** when Cursor allows, instead of per-command approval spam: repo-root `cd`, `git status` / `log` / `diff`, `pytest`, `npm` lint/typecheck/build where in scope, `bash -n`, scoped `mkdir`/`chmod`, and grouped **`scripts/sprint_runner.sh all`** after edits and again before push.
+- **Prefer the runner** over one-off micro terminal steps so checkpoint, guardrails, and report context stay consistent.
+
+### Still STOP without explicit approval
+
+**Push/merge to `main`**, **`git rebase`**, **`git reset`**, **`git clean`**, **`rm -rf`**, **`sudo`**, **installs**, **`curl`/`wget`**, **`ssh`**, **`docker`**, **Railway mutations**, **Stripe / billing / credit_ledger / wallet / processing-minute policy edits** (unless that is the sprint’s sole scope), **live OpenAI / real provider calls**, **migrations / destructive DB**, **secrets in git or chat**, **out-of-repo writes**, **deploy**. Fast-forward **`git pull --ff-only`** on a non-main sprint branch is OK when the sprint allows network and you need to sync.
 
 ## References
 

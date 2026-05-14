@@ -1,6 +1,16 @@
 # Sprint report template
 
-Copy the block below into the PR description, a sprint doc, or the agent’s final message. Remove unused rows; keep **forbidden areas** and **checks** explicit.
+**Captain Autonomy Rules v1.5** and **Sprint Runner Mode** — pair this template with `bash scripts/sprint_runner.sh all` and `docs/CAPTAIN_RULES.md`.
+
+**Paste this block back to Captain** (PR body, sprint doc, or agent final message). Trim unused lines; keep forbidden-area and check lines honest.
+
+---
+
+## Optional quick checklist (delete after tick)
+
+- [ ] Sprint branch (not `main` / `master`)
+- [ ] `bash scripts/sprint_runner.sh all` → exit 0
+- [ ] No secrets / no forbidden-area drift (see sections below)
 
 ---
 
@@ -10,37 +20,37 @@ Copy the block below into the PR description, a sprint doc, or the agent’s fin
 **Commit hash:**  
 
 **Files changed:**  
-- (list paths or `see git diff --stat`)
+- (paths or “see `git diff --stat` / runner checkpoint output”)
 
 **Purpose:**  
-(1–3 sentences: what this sprint was meant to accomplish.)
+(1–3 sentences.)
 
 **Tests run:**  
-(e.g. `npm run lint`, `pytest apps/api/tests/test_foo.py`, `bash -n scripts/…`, or **not run / optional** with reason.)
+(e.g. `pytest …`, `npm run lint`, `bash scripts/sprint_runner.sh all`, or **skipped — doc-only** with reason.)
 
 **Results:**  
-(pass/fail/skip; link CI if applicable.)
+(pass / fail / skip; CI link if any.)
 
 **Forbidden areas checked:**  
 - [ ] No billing / Stripe / wallet / credit_ledger / processing-minute policy edits (unless this sprint’s sole scope)  
 - [ ] No Railway deploy or env mutations (unless explicitly in scope)  
-- [ ] No secrets committed; no client-side provider keys  
-- [ ] Provider: mock default; real calls only if sprint-approved and gated by env  
+- [ ] No secrets; no client-side provider keys  
+- [ ] Provider: mock default; real calls only if sprint-approved and env-gated  
 
-**Secret scan / key-pattern check:**  
-(Command used, e.g. `rg` on changed paths for `sk-` patterns; outcome: **clean** / **N/A** / note without pasting matches.)
+**Secret / key-pattern check:**  
+(tool: e.g. `scripts/sprint_runner.sh guard` or `rg` on changed paths; outcome: **clean** / **N/A** — do not paste matches.)
 
 **Provider-call check:**  
-(Confirm tests/CI did not invoke real providers unless explicitly approved for this sprint.)
+(Tests/CI did not hit real providers unless this sprint explicitly approved that.)
 
 **Known risks:**  
 
 **Next recommended sprint:**  
-(Reference `docs/SPRINT_BOARD.md` row if applicable.)
+(see `docs/SPRINT_BOARD.md`.)
 
-**Exact commands run:**  
+**Commands run (redact secrets):**  
 ```
-(paste commands only; redact env values)
+(paste only; use runner where possible)
 ```
 
 ---

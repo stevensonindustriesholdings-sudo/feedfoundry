@@ -2,6 +2,8 @@
 
 Ordered backlog for focused sprints. Reorder only with explicit product/engineering agreement.
 
+- **Governance:** **Captain Autonomy Rules v1.5** and **Sprint Runner Mode** (`docs/CAPTAIN_RULES.md`, `bash scripts/sprint_runner.sh all`).
+
 | # | Sprint | Notes |
 |---|--------|--------|
 | 1 | **Repo control pack** | Captain rules, report template, PR checklist, `sprint_report.sh`, `AGENTS.md` pointers; no billing/Railway/provider mutations. |
@@ -12,3 +14,5 @@ Ordered backlog for focused sprints. Reorder only with explicit product/engineer
 | 6 | **Private beta hardening** | Reliability, observability, runbooks; scoped fixes only. |
 
 See `docs/CAPTAIN_RULES.md` for merge discipline and forbidden areas.
+
+- **Sprint Runner Mode:** where possible, use `bash scripts/sprint_runner.sh all` (checkpoint + guard + report) at sprint boundaries instead of ad-hoc shell steps; pair with `docs/REPORT_TEMPLATE.md` for the Captain paste-back.
