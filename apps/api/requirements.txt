@@ -1,5 +1,9 @@
 # Production API dependencies (kept in sync with apps/api/pyproject.toml [project.dependencies]).
 # The API Dockerfile installs from this file.
+#
+# Local dev / pytest: create `apps/api/.venv`, then:
+#   pip install -r requirements.txt && pip install -e ".[dev]"
+# so `stripe`, `pytest`, and the `app` package resolve (avoids ModuleNotFoundError on fresh clones).
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 sqlmodel>=0.0.22
