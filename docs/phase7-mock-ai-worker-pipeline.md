@@ -8,7 +8,9 @@ change processing-minute reserve/debit policy or the credit ledger.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `FF_WORKER_AI_ENRICHMENT_ENABLED` | **false** (unset) | When truthy, the worker runs mock structured-AI stages after transcript preparation and writes stage logs. |
+| `FF_WORKER_AI_ENRICHMENT_ENABLED` | **false** (unset) | When truthy, the worker runs structured-AI enrichment stages after outputs are written and persists `AIRun` / `AIStageLog`. |
+| `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE` | **false** | With `AI_STRUCTURED_PROVIDER_MODE=canary_openai` and full canary gates, allows bounded OpenAI HTTP for **transcript_intelligence** only (visual/product remain mock). |
+| `FF_WORKER_AI_ENRICHMENT_OPENAI_MAX_CALLS` | `4` | Max OpenAI `complete()` calls per enrichment run for transcript intelligence before falling back to mock (default covers one chunk × four schemas). |
 
 Legacy name `FF_WORKER_MOCK_AI_ENRICHMENT` is **not** used; configure only
 `FF_WORKER_AI_ENRICHMENT_ENABLED`.
@@ -17,8 +19,12 @@ Legacy name `FF_WORKER_MOCK_AI_ENRICHMENT` is **not** used; configure only
 
 - **Default:** `MockAIProvider` only (deterministic JSON, **no network**, no provider SDK calls
   from this path).
-- **Real providers:** gated via `AI_STRUCTURED_PROVIDER_MODE` and canary env (see [phase7-openai-canary.md](./phase7-openai-canary.md)); legacy `AI_ENABLE_MOCK_PROVIDER` still maps to `mock`/`disabled` when mode unset. Until a
-  dedicated sprint wires real structured providers, enrichment stays mock-only.
+- **Bounded OpenAI (transcript only):** when `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE=true`,
+  `AI_STRUCTURED_PROVIDER_MODE=canary_openai`, and all structured canary gates pass (see
+  [phase7-openai-canary.md](./phase7-openai-canary.md)), transcript intelligence uses
+  `OpenAIStructuredProviderShell` for the first *N* completions (`FF_WORKER_AI_ENRICHMENT_OPENAI_MAX_CALLS`),
+  then mock for the remainder. Visual analysis and product signal stay on mock regardless.
+- **Legacy:** `AI_ENABLE_MOCK_PROVIDER` still maps to `mock`/`disabled` when structured mode is unset.
 
 ## Persistence (`AIRun` / `AIStageLog`)
 

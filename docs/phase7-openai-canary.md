@@ -9,8 +9,9 @@ This document describes **environment-only** guardrails for the structured worke
 | `mock` (default) | any | any | any | any | ignored | ignored | `MockAIProvider` — no HTTP |
 | `disabled` | any | any | any | any | any | any | `DisabledStructuredProvider` — `complete()` raises |
 | `canary_openai` (alias `canary`) | **must be `openai`** | false **or** kill-switch false | — | — | — | — | `ProviderDisabledError` at `get_structured_ai_provider()` |
-| `canary_openai` | `openai` | true | true | non-empty | `MAX_CALLS>=1`, `MAX_COST>0`, `TIMEOUT>=1` | any | `OpenAIStructuredProviderShell` constructed; `complete()` **blocked** until runner flag is on |
-| `canary_openai` | `openai` | true | true | non-empty | valid | **true** | `complete()` may issue **one bounded** `POST {OPENAI_BASE_URL}/v1/responses` (Responses API, `text.format` JSON schema from `SCHEMA_REGISTRY`) |
+| `canary_openai` | `openai` | true | true | non-empty | `MAX_CALLS>=1`, `MAX_COST>0`, `TIMEOUT>=1` | any | `OpenAIStructuredProviderShell` constructed; `complete()` **blocked** until `FF_OPENAI_CANARY_RUNNER_ENABLED` and/or `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE` passes HTTP gate |
+| `canary_openai` | `openai` | true | true | non-empty | valid | **true** | `complete()` may issue **one bounded** `POST {OPENAI_BASE_URL}/v1/responses` (Responses API, `text.format` JSON schema from `SCHEMA_REGISTRY`; production factsheet requests wire a strict-safe schema — see adapter) |
+| `canary_openai` | `openai` | true | true | non-empty | valid | **false** + `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE` **true** | Same HTTP unlock for worker transcript enrichment (bounded by `FF_WORKER_AI_ENRICHMENT_OPENAI_MAX_CALLS`); fixture runner still independent |
 | `canary_openai` | `openai` | true | true | **empty** | valid | any | `ProviderDisabledError` (fail-closed) |
 | `canary_openai` | `anthropic` (etc.) | true | true | non-empty | valid | any | `ProviderDisabledError` — `[ai_canary_ai_provider_not_openai]` |
 
@@ -23,7 +24,7 @@ This document describes **environment-only** guardrails for the structured worke
 3. **Disable canary lane:** set `AI_CANARY_ENABLED=false`.
 4. **Remove credentials:** unset or blank `OPENAI_API_KEY` in the worker environment.
 5. **Routing hint:** set `AI_PROVIDER=openai` explicitly for the structured OpenAI canary path (empty or non-`openai` values fail closed).
-6. **Disable fixture runner HTTP:** set `FF_OPENAI_CANARY_RUNNER_ENABLED=false` (blocks `complete()` HTTP even if other gates are on).
+6. **Disable fixture runner HTTP:** set `FF_OPENAI_CANARY_RUNNER_ENABLED=false` (blocks the post-job synthetic fixture canary). Worker transcript enrichment HTTP is separately gated by `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE` (see mock AI worker doc).
 
 No code deploy is required for rollback if your platform already reads env at boot; restart workers after env changes.
 
@@ -38,7 +39,7 @@ Machine-readable prefixes appear in `ProviderDisabledError` messages as `[code] 
 | `ai_canary_ai_provider_not_openai` | `AI_PROVIDER` is not exactly `openai` |
 | `ai_canary_openai_api_key_missing` | `OPENAI_API_KEY` empty or whitespace |
 | `ai_canary_structured_mode_not_canary` | `AI_STRUCTURED_PROVIDER_MODE` is not `canary_openai` (or legacy `canary`) |
-| `ai_canary_runner_flag_off` | `FF_OPENAI_CANARY_RUNNER_ENABLED` is not truthy (HTTP path off) |
+| `ai_canary_runner_flag_off` | Neither `FF_OPENAI_CANARY_RUNNER_ENABLED` nor `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE` is truthy (HTTP path off) |
 
 After HTTP is attempted, transport failures use `CanaryRuntimeCode` values such as `openai_canary_http_auth`, `openai_canary_http_rate_limit`, `openai_canary_http_timeout`, `openai_canary_http_malformed_response`, etc. Legacy `openai_canary_adapter_http_not_wired` remains for unexpected `RuntimeError` paths outside the typed adapter.
 
@@ -72,7 +73,7 @@ Separate from `FF_WORKER_AI_ENRICHMENT_ENABLED`:
 ## Bounded HTTP adapter (Responses API)
 
 - **Endpoint:** `POST {OPENAI_BASE_URL or https://api.openai.com}/v1/responses`.
-- **Structured output:** `text.format` with `type: json_schema`, `schema` from Pydantic `model_json_schema()` for `(schema_name, schema_version)` in `SCHEMA_REGISTRY`.
+- **Structured output:** `text.format` with `type: json_schema`, `schema` from Pydantic `model_json_schema()` for `(schema_name, schema_version)` in `SCHEMA_REGISTRY`, except the production factsheet pair which wires `P7CanaryFactsheetLivePayload` JSON Schema so OpenAI `strict: true` accepts the request while `OutputValidator` still validates responses as `FactsheetPayload`.
 - **Timeout:** `min(request.timeout_seconds, AI_CANARY_TIMEOUT_SECONDS)` per call; `httpx` client timeout matches that bound.
 - **Retries:** `AI_CANARY_HTTP_MAX_RETRIES` (default **0**); bounded retries only on HTTP 429 / 5xx when retries > 0.
 - **Logging:** no raw prompts or bodies; info logs include model, stage, trace_id, URL only.
@@ -92,7 +93,9 @@ Separate from `FF_WORKER_AI_ENRICHMENT_ENABLED`:
 | `AI_CANARY_MAX_COST` | Must be > 0 (internal ceiling hint for ops metrics). |
 | `AI_CANARY_TIMEOUT_SECONDS` | Must be ≥ 1. |
 | `AI_CANARY_HTTP_MAX_RETRIES` | Optional; default `0` (no HTTP retries). |
-| `FF_OPENAI_CANARY_RUNNER_ENABLED` | Ops-only; enables the fixture-bound canary runner and allows `OpenAIStructuredProviderShell.complete()` HTTP (default **false**). |
+| `FF_OPENAI_CANARY_RUNNER_ENABLED` | Ops-only; enables the fixture-bound canary runner **and** (with other gates) allows `OpenAIStructuredProviderShell.complete()` HTTP (default **false**). |
+| `FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE` | When **true** with full canary gates + `canary_openai` mode, worker transcript intelligence may use bounded OpenAI HTTP (default **false**). |
+| `FF_WORKER_AI_ENRICHMENT_OPENAI_MAX_CALLS` | Cap OpenAI `complete()` invocations per enrichment run for transcript intelligence before falling back to mock (default **4**, one chunk × four schemas). |
 
 ## First real-provider canary (later sprint)
 
