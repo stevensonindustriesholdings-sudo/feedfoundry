@@ -74,9 +74,10 @@ class AICanaryGateConfig(BaseModel):
     **Mode matrix** (see ``docs/phase7-openai-canary.md``):
 
     - ``mock`` — default; no real HTTP; ignores these booleans for routing.
-    - ``canary`` — real adapter may run **only** when ``AI_CANARY_ENABLED`` and
-      ``AI_ENABLE_REAL_PROVIDER`` are truthy, ``OPENAI_API_KEY`` is non-empty (checked
-      in the worker), and numeric caps parse as valid positive bounds.
+    - ``canary_openai`` (alias ``canary``) — real adapter may run **only** when
+      ``AI_CANARY_ENABLED`` and ``AI_ENABLE_REAL_PROVIDER`` are truthy,
+      ``OPENAI_API_KEY`` is non-empty (checked in the worker), ``AI_PROVIDER=openai``,
+      and numeric caps parse as valid positive bounds.
     - ``disabled`` — structured real path is off; worker returns a fail-closed provider.
 
     Env vars (placeholders in ``.env.example``; never commit secrets):
@@ -86,6 +87,8 @@ class AICanaryGateConfig(BaseModel):
     - ``AI_CANARY_MAX_CALLS`` — hard cap hint for orchestration (must be >= 1 when canary on).
     - ``AI_CANARY_MAX_COST`` — internal cost ceiling for canary (>= 0).
     - ``AI_CANARY_TIMEOUT_SECONDS`` — per-call timeout bound (> 0).
+    - ``AI_PROVIDER`` — must be exactly ``openai`` for the structured OpenAI canary path
+      (see :func:`ai_provider_allows_openai_structured_path`).
     """
 
     canary_enabled: bool = False
@@ -171,6 +174,13 @@ def ai_canary_booleans_allow_real_path(cfg: AICanaryGateConfig) -> bool:
     """Both the canary lane and the real-provider kill-switch must be on."""
 
     return cfg.canary_enabled and cfg.real_provider_enabled
+
+
+def ai_provider_allows_openai_structured_path() -> bool:
+    """Structured OpenAI canary requires an explicit ``AI_PROVIDER=openai`` routing hint."""
+
+    v = (os.getenv("AI_PROVIDER") or "").strip().lower()
+    return v == "openai"
 
 
 def job_internal_spend_within_cap(

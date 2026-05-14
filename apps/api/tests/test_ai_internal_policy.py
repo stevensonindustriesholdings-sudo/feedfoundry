@@ -97,3 +97,15 @@ def test_ai_canary_booleans_allow_real_path():
     assert not policy.ai_canary_booleans_allow_real_path(off)
     on = policy.AICanaryGateConfig(canary_enabled=True, real_provider_enabled=True)
     assert policy.ai_canary_booleans_allow_real_path(on)
+
+
+def test_ai_provider_allows_openai_structured_path(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    assert policy.ai_provider_allows_openai_structured_path()
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    assert not policy.ai_provider_allows_openai_structured_path()
+
+
+def test_ai_provider_empty_not_openai(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    assert not policy.ai_provider_allows_openai_structured_path()
