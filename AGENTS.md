@@ -43,4 +43,18 @@ Do not overbuild the frontend in this repository. Generate OpenAPI-compatible en
 - **Provider policy:** mock provider remains the default in documented policy and local practice; real providers only behind explicit environment flags. Tests and CI must not call real providers unless a sprint explicitly approves that (document the exception when it exists).
 - **No processing-minute / credit-ledger / billing changes** without an explicit sprint scoped to that work.
 - **No Railway deployment or config mutations** from routine sprints; infrastructure changes are their own approved scope.
-- **References:** `docs/CAPTAIN_RULES.md` (captain operating contract, branch naming, forbidden areas, canary checklist), `docs/REPORT_TEMPLATE.md` (sprint report fields), `docs/SPRINT_BOARD.md` (near-term sequence), `scripts/sprint_report.sh` (quick branch/diff context), `.github/pull_request_template.md` (PR checklist).
+- **References:** `docs/CAPTAIN_RULES.md` (captain operating contract, branch naming, forbidden areas, canary checklist), `docs/REPORT_TEMPLATE.md` (sprint report fields), `docs/SPRINT_BOARD.md` (near-term sequence), `scripts/sprint_report.sh` (quick branch/diff context), `scripts/sprint_runner.sh` (checkpoint / guard / report grouping for Sprint Runner Mode), `.github/pull_request_template.md` (PR checklist).
+
+## Autonomy Level 1.5 (Sprint Runner Mode)
+
+Use this mode for bounded sprints so the agent batches safe local work instead of asking for repeated approvals on every micro-step.
+
+- **Batch safe locals without re-asking** when the environment allows: `cd` to repo root, `git status`, `git log`, `git diff`, read-only file reads, `pytest`, `npm run lint` / `typecheck` / `build`, `bash -n` on scripts, scoped `mkdir`/`chmod` on sprint artifacts, and **one grouped** `scripts/sprint_runner.sh all` at checkpoint, after implementation, and before handoff.
+- **Prefer `scripts/sprint_runner.sh`** over ad-hoc terminal whack-a-mole: `checkpoint` (context), `guard` (branch + diff hygiene + key-pattern scan), `report` (wraps `sprint_report.sh` when present), then `all` in order.
+- **One grouped pattern per sprint leg:** checkpoint → implement → final guard + report + commit (+ push only the sprint branch when the sprint explicitly allows push and guard is clean).
+
+### Still STOP (no agent autonomy)
+
+Do **not** do these without explicit human approval for that action: **push to `main`**, **merge to `main`**, **`git rebase`**, **`git reset --hard`**, **`git clean`**, **`rm -rf`** (especially project trees), **`sudo`**, **package installs** (`npm install` / `pip install` / `brew` when not in sprint scope), **`curl` / `wget`**, **`ssh`**, **`docker`**, **Railway mutations** (deploy, variables, service changes), **Stripe / live billing**, **live OpenAI or other real provider calls**, **DB migrations / destructive DB ops**, **printing or committing secrets**, **writes outside the repo**, **arbitrary `git merge`** (fast-forward `git pull --ff-only` to sync a branch is OK when the sprint allows network and the sprint branch is behind).
+
+See `docs/CAPTAIN_RULES.md` for the full captain contract and forbidden areas.

@@ -12,3 +12,5 @@ Ordered backlog for focused sprints. Reorder only with explicit product/engineer
 | 6 | **Private beta hardening** | Reliability, observability, runbooks; scoped fixes only. |
 
 See `docs/CAPTAIN_RULES.md` for merge discipline and forbidden areas.
+
+- **Sprint Runner Mode:** where possible, use `bash scripts/sprint_runner.sh all` (checkpoint + guard + report) at sprint boundaries instead of ad-hoc shell steps; pair with `docs/REPORT_TEMPLATE.md` for the Captain paste-back.
