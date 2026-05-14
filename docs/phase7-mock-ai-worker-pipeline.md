@@ -17,7 +17,7 @@ Legacy name `FF_WORKER_MOCK_AI_ENRICHMENT` is **not** used; configure only
 
 - **Default:** `MockAIProvider` only (deterministic JSON, **no network**, no provider SDK calls
   from this path).
-- **Real providers:** gated elsewhere (`AI_ENABLE_MOCK_PROVIDER`, future adapters). Until a
+- **Real providers:** gated via `AI_STRUCTURED_PROVIDER_MODE` and canary env (see [phase7-openai-canary.md](./phase7-openai-canary.md)); legacy `AI_ENABLE_MOCK_PROVIDER` still maps to `mock`/`disabled` when mode unset. Until a
   dedicated sprint wires real structured providers, enrichment stays mock-only.
 
 ## Persistence (`AIRun` / `AIStageLog`)

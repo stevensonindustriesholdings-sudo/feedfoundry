@@ -5,7 +5,7 @@ Ordered backlog for focused sprints. Reorder only with explicit product/engineer
 | # | Sprint | Notes |
 |---|--------|--------|
 | 1 | **Repo control pack** | Captain rules, report template, PR checklist, `sprint_report.sh`, `AGENTS.md` pointers; no billing/Railway/provider mutations. |
-| 2 | **OpenAI canary guardrails** | Env flags, caps, router logging assertions; mock remains default; document CI/test policy (no real calls unless explicitly approved). |
+| 2 | **OpenAI canary guardrails** | **Done (7C-7):** `docs/phase7-openai-canary.md`, `AI_STRUCTURED_PROVIDER_MODE`, API `AICanaryGateConfig`, worker registry + adapter shell; mock default; CI/tests stay mock-only. |
 | 3 | **Tiny real OpenAI canary** | Staging-only, minimal fixture, one JSON call, usage logged, validator required; no customer path. |
 | 4 | **Worker orchestration integration** | Job pipeline wiring per MVP contract; respect credit controls; no policy drift in ledger. |
 | 5 | **Admin / customer visibility** | Dashboards and status surfaces; still no secrets in client; align with annual access + credits language. |
