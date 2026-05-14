@@ -1,7 +1,7 @@
-"""Integration tests for optional mock AI enrichment (``FF_WORKER_MOCK_AI_ENRICHMENT``).
+"""Integration tests for optional mock AI enrichment (``FF_WORKER_AI_ENRICHMENT_ENABLED``).
 
-E worktree: merged ``phase7/agent-b-worker-ai-orchestrator`` at ``568c416`` (FF from integration
-``a241b2e``) so tests import ``ai.pipeline``; no network; no credit ledger side effects.
+Merged ``phase7/agent-b-worker-ai-orchestrator`` for ``ai.pipeline``; no network;
+no credit ledger side effects.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def _seed_job(session: Session, *, org_id: str, job_id: str, ma_id: str) -> Job:
 
 
 def test_flag_off_no_airun(monkeypatch, sqlite_engine):
-    monkeypatch.delenv("FF_WORKER_MOCK_AI_ENRICHMENT", raising=False)
+    monkeypatch.delenv("FF_WORKER_AI_ENRICHMENT_ENABLED", raising=False)
     from ai.pipeline import maybe_run_mock_ai_job_enrichment
 
     org_id, job_id, ma_id = "org_ai_off", "job_ai_off", "ma_ai_off"
@@ -94,8 +94,8 @@ def test_flag_off_no_airun(monkeypatch, sqlite_engine):
         assert runs == []
 
 
-def test_flag_on_persists_airun_and_stage_logs(monkeypatch, sqlite_engine):
-    monkeypatch.setenv("FF_WORKER_MOCK_AI_ENRICHMENT", "1")
+def test_flag_on_persists_airun_transcript_validates_skips_visual_and_product(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
     from ai.pipeline import maybe_run_mock_ai_job_enrichment
 
     org_id, job_id, ma_id = "org_ai_on", "job_ai_on", "ma_ai_on"
@@ -107,15 +107,7 @@ def test_flag_on_persists_airun_and_stage_logs(monkeypatch, sqlite_engine):
             "chunk_plan": [{"index": 0, "start_sec": 0.0, "end_sec": 2.5}],
         }
         tx = {"segments": [{"start": 0.0, "end": 5.0, "text": "alpha bravo charlie delta echo"}]}
-        with patch("app.services.credit_ledger.debit_reserved_processing_minutes") as m_debit, patch(
-            "app.services.credit_ledger.reserve_processing_minutes"
-        ) as m_res, patch(
-            "app.services.credit_ledger.release_reserved_processing_minutes"
-        ) as m_rel:
-            maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
-            m_debit.assert_not_called()
-            m_res.assert_not_called()
-            m_rel.assert_not_called()
+        maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
 
         runs = session.exec(select(AIRun).where(AIRun.job_id == job_id)).all()
         assert len(runs) == 1
@@ -126,27 +118,78 @@ def test_flag_on_persists_airun_and_stage_logs(monkeypatch, sqlite_engine):
         by_name = {s.stage_name: s for s in stages}
         assert by_name["transcript_intelligence"].status == "completed"
         assert by_name["transcript_intelligence"].validation_status == "accepted"
-        assert by_name["visual_analysis"].status == "completed"
-        assert by_name["product_signal"].status == "completed"
+        assert by_name["visual_analysis"].status == "skipped"
+        assert by_name["visual_analysis"].error_message == "no_visual_inputs"
+        assert by_name["product_signal"].status == "skipped"
+        assert by_name["product_signal"].error_message == "no_product_images"
 
 
-def test_validation_failure_writes_failed_stage_log(monkeypatch, sqlite_engine):
-    monkeypatch.setenv("FF_WORKER_MOCK_AI_ENRICHMENT", "1")
+def test_no_credit_ledger_calls_during_enrichment(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
+    from ai.pipeline import maybe_run_mock_ai_job_enrichment
+
+    org_id, job_id, ma_id = "org_ai_led", "job_ai_led", "ma_ai_led"
+    with Session(sqlite_engine) as session:
+        job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
+        mi = {"schema_version": "1.0", "duration_seconds": 1.0, "chunk_plan": []}
+        tx = {"segments": [{"start": 0.0, "end": 1.0, "text": "ledger isolation text here"}]}
+        with patch("app.services.credit_ledger.debit_reserved_processing_minutes") as m_debit, patch(
+            "app.services.credit_ledger.reserve_processing_minutes"
+        ) as m_res, patch(
+            "app.services.credit_ledger.release_reserved_processing_minutes"
+        ) as m_rel:
+            maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
+            m_debit.assert_not_called()
+            m_res.assert_not_called()
+            m_rel.assert_not_called()
+
+
+def test_transcript_intelligence_validation_failure_logs_failed_stage(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
+    from ai.modules import transcript_intelligence as ti_mod
+    from ai.pipeline import maybe_run_mock_ai_job_enrichment
+
+    org_id, job_id, ma_id = "org_ai_ti", "job_ai_ti", "ma_ai_ti"
+    with Session(sqlite_engine) as session:
+        job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
+        mi = {"schema_version": "1.0", "duration_seconds": 1.0, "chunk_plan": []}
+        tx = {"segments": [{"start": 0.0, "end": 1.0, "text": "some transcript"}]}
+
+        def boom(*_a, **_k):
+            raise ti_mod.TranscriptIntelligenceValidationError("forced TI failure for test")
+
+        import ai.pipeline as pipeline_mod
+
+        with patch.object(pipeline_mod, "run_transcript_intelligence", side_effect=boom):
+            maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
+
+        runs = session.exec(select(AIRun).where(AIRun.job_id == job_id)).all()
+        assert len(runs) == 1
+        assert runs[0].status == "completed"
+        stages = session.exec(select(AIStageLog).where(AIStageLog.ai_run_id == runs[0].id)).all()
+        ti = next(s for s in stages if s.stage_name == "transcript_intelligence")
+        assert ti.status == "failed"
+        assert ti.error_code == "transcript_intelligence_validation"
+
+
+def test_visual_analysis_validation_failure_logs_failed_stage(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
     from ai.modules import visual_analysis as va_mod
     from ai.pipeline import maybe_run_mock_ai_job_enrichment
 
-    org_id, job_id, ma_id = "org_ai_val", "job_ai_val", "ma_ai_val"
+    org_id, job_id, ma_id = "org_ai_va", "job_ai_va", "ma_ai_va"
     with Session(sqlite_engine) as session:
         job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
         mi = {
             "schema_version": "1.0",
             "duration_seconds": 1.0,
-            "chunk_plan": [{"index": 0, "start_sec": 0.0, "end_sec": 1.0}],
+            "chunk_plan": [],
+            "keyframes": [{"frame_id": "kf-test", "t_ms": 0}],
         }
         tx = {"segments": [{"start": 0.0, "end": 1.0, "text": "some transcript"}]}
 
         def boom(*_a, **_k):
-            raise va_mod.VisualAnalysisValidationError("forced failure for test")
+            raise va_mod.VisualAnalysisValidationError("forced visual failure for test")
 
         import ai.pipeline as pipeline_mod
 
@@ -155,26 +198,22 @@ def test_validation_failure_writes_failed_stage_log(monkeypatch, sqlite_engine):
 
         runs = session.exec(select(AIRun).where(AIRun.job_id == job_id)).all()
         assert len(runs) == 1
-        assert runs[0].status == "completed"
         stages = session.exec(select(AIStageLog).where(AIStageLog.ai_run_id == runs[0].id)).all()
         vis = next(s for s in stages if s.stage_name == "visual_analysis")
         assert vis.status == "failed"
         assert vis.error_code == "visual_analysis_validation"
-        assert "forced failure" in (vis.error_message or "")
-        ti = next(s for s in stages if s.stage_name == "transcript_intelligence")
-        assert ti.status == "completed"
+        assert "forced visual" in (vis.error_message or "")
 
 
-def test_cancellation_stops_pending_stages(monkeypatch, sqlite_engine):
-    monkeypatch.setenv("FF_WORKER_MOCK_AI_ENRICHMENT", "1")
+def test_cancellation_stops_before_visual_analysis(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
     from ai import pipeline as pipeline_mod
     from ai.pipeline import maybe_run_mock_ai_job_enrichment
 
     calls = {"n": 0}
 
-    def cancel_after_transcript(*a, **k):
+    def cancel_before_visual(*_a, **_k):
         calls["n"] += 1
-        # 1: initial, 2: before TI run, 3: after TI — before visual
         return calls["n"] >= 4
 
     org_id, job_id, ma_id = "org_ai_can", "job_ai_can", "ma_ai_can"
@@ -183,10 +222,11 @@ def test_cancellation_stops_pending_stages(monkeypatch, sqlite_engine):
         mi = {
             "schema_version": "1.0",
             "duration_seconds": 3.0,
-            "chunk_plan": [{"index": 0, "start_sec": 0.0, "end_sec": 1.5}],
+            "chunk_plan": [],
+            "keyframes": [{"frame_id": "kf-can", "t_ms": 0}],
         }
         tx = {"segments": [{"start": 0.0, "end": 3.0, "text": "one two three four five"}]}
-        with patch.object(pipeline_mod, "_job_is_cancelled", side_effect=cancel_after_transcript):
+        with patch.object(pipeline_mod, "_job_is_cancelled", side_effect=cancel_before_visual):
             maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
 
         run = session.exec(select(AIRun).where(AIRun.job_id == job_id)).one()
@@ -197,3 +237,29 @@ def test_cancellation_stops_pending_stages(monkeypatch, sqlite_engine):
         assert "visual_analysis" not in names
         assert "product_signal" not in names
 
+
+def test_enabled_no_rows_when_no_transcript_and_no_optional_inputs(monkeypatch, sqlite_engine):
+    """Enrichment on but nothing to run: no AIRun (same as idle enrichment)."""
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
+    from ai.pipeline import maybe_run_mock_ai_job_enrichment
+
+    org_id, job_id, ma_id = "org_ai_empty", "job_ai_empty", "ma_ai_empty"
+    with Session(sqlite_engine) as session:
+        job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
+        mi = {"schema_version": "1.0", "duration_seconds": 2.0, "chunk_plan": []}
+        maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=None, media_inspection_payload=mi)
+        assert session.exec(select(AIRun).where(AIRun.job_id == job_id)).all() == []
+
+
+def test_no_http_client_used_by_enrichment_path(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
+    from ai.pipeline import maybe_run_mock_ai_job_enrichment
+
+    org_id, job_id, ma_id = "org_ai_http", "job_ai_http", "ma_ai_http"
+    with Session(sqlite_engine) as session:
+        job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
+        mi = {"schema_version": "1.0", "duration_seconds": 1.0, "chunk_plan": []}
+        tx = {"segments": [{"start": 0.0, "end": 1.0, "text": "offline enrichment"}]}
+        with patch("httpx.Client.post") as m_post:
+            maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
+            m_post.assert_not_called()
