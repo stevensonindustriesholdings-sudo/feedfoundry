@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sprint_runner.sh — checkpoint / guard / report (no network, no installs)
+# sprint_runner.sh — checkpoint / guard / tests / report (no network; no pip)
 #
 # checkpoint: current branch, "git status --short", latest commit one-liner,
 #   "git log --oneline --decorate -8", and changed paths vs HEAD:
@@ -11,10 +11,16 @@
 #   warn on touched paths (unstaged/staged/untracked) if they mention
 #   credit_ledger|railway|stripe.
 #
-# report: runs scripts/sprint_report.sh when executable; else minimal echo.
-# all: checkpoint, guard, report in order.
+# tests: if apps/api/.venv exists, import stripe + import app.main, then
+#   full `python -m pytest -q` under apps/api; then worker tests with
+#   PYTHONPATH=apps/api:apps/worker using the same interpreter. If venv or
+#   stripe is missing, prints WARN and skips pytest (install per apps/api/requirements.txt).
+#   Web (npm) checks are optional and not run here.
 #
-# Usage: ./scripts/sprint_runner.sh checkpoint|guard|report|all
+# report: runs scripts/sprint_report.sh when executable; else minimal echo.
+# all: checkpoint, guard, tests, report in order.
+#
+# Usage: ./scripts/sprint_runner.sh checkpoint|guard|tests|report|all
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -90,6 +96,33 @@ do_guard() {
   echo "=== end guard (ok) ==="
 }
 
+api_venv_python() {
+  echo "$ROOT/apps/api/.venv/bin/python"
+}
+
+do_tests() {
+  echo "=== tests (api + worker) ==="
+  local py
+  py="$(api_venv_python)"
+  if [[ ! -x "$py" ]]; then
+    echo "WARN: apps/api/.venv missing — skip API/worker pytest. See apps/api/requirements.txt header for pip install."
+    echo "=== end tests (skipped) ==="
+    return 0
+  fi
+  if ! "$py" -c "import stripe" 2>/dev/null; then
+    echo "WARN: stripe not importable in API venv — skip pytest. Run: (cd apps/api && .venv/bin/pip install -r requirements.txt)"
+    echo "=== end tests (skipped) ==="
+    return 0
+  fi
+  echo "--- api import smoke ---"
+  (cd "$ROOT/apps/api" && "$py" -c "from app.main import app")
+  echo "--- api pytest ---"
+  (cd "$ROOT/apps/api" && "$py" -m pytest -q)
+  echo "--- worker pytest (PYTHONPATH=api:worker) ---"
+  (cd "$ROOT/apps/worker" && env PYTHONPATH="$ROOT/apps/api:$ROOT/apps/worker" "$py" -m pytest -q)
+  echo "=== end tests (ok) ==="
+}
+
 do_report() {
   echo "=== report ==="
   if [[ -x "$ROOT/scripts/sprint_report.sh" ]]; then
@@ -103,10 +136,11 @@ do_report() {
 case "${1:-}" in
   checkpoint) do_checkpoint ;;
   guard) do_guard ;;
+  tests) do_tests ;;
   report) do_report ;;
-  all) do_checkpoint; echo ""; do_guard; echo ""; do_report ;;
+  all) do_checkpoint; echo ""; do_guard; echo ""; do_tests; echo ""; do_report ;;
   *)
-    echo "Usage: $0 checkpoint|guard|report|all" >&2
+    echo "Usage: $0 checkpoint|guard|tests|report|all" >&2
     exit 1
     ;;
 esac
