@@ -2,7 +2,7 @@
 
 Customer-facing **Next.js (App Router)** app: **annual hosted archive** and **creator archive** positioning, **processing allowance** / **processing time** (avoid “credits” in customer copy), upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.” Full stack setup: [docs/runbook.md](../../docs/runbook.md).
 
-**Phase 7:** the web app never holds **AI provider** secrets. Server-only proxy keys only. Product **Product Grid** UX must stay **preview / optional** until the API exposes matching fields — see [docs/phase7-product-grid-extension.md](../../docs/phase7-product-grid-extension.md) and the [AI operating brief](../../docs/ai-operating-brief.md). The **System** page includes a server-side **AI run status** readout (`GET /v1/admin/ai-runs`) for operators — redacted JSON only, no prompts.
+**Phase 7:** the web app never holds **AI provider** secrets. Server-only proxy keys only. Product **Product Grid** UX must stay **preview / optional** until the API exposes matching fields — see [docs/phase7-product-grid-extension.md](../../docs/phase7-product-grid-extension.md) and the [AI operating brief](../../docs/ai-operating-brief.md). OpenAI canary and worker-only runner flags are documented in [phase7-openai-canary.md](../../docs/phase7-openai-canary.md). The **System** page includes a server-side **AI run status** readout (`GET /v1/admin/ai-runs`) for operators — redacted JSON only, no prompts.
 
 ## Requirements
 
