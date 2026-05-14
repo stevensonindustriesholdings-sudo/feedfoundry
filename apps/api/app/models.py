@@ -226,6 +226,54 @@ class JobOutput(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class AIRun(SQLModel, table=True):
+    """Phase 7: one logical AI execution attempt for a job (internal/ops; not customer billing).
+
+    Customer **processing minutes** remain on ``Job`` / ledger — this row tracks orchestration
+    state and is safe to expose read-only to admins later.
+    """
+
+    __tablename__ = "ai_runs"
+    __table_args__ = (Index("ix_ai_runs_job_org", "job_id", "organisation_id"),)
+
+    id: str = Field(default_factory=lambda: new_id("air"), primary_key=True)
+    job_id: str = Field(foreign_key="jobs.id", index=True)
+    organisation_id: str = Field(foreign_key="organisations.id", index=True)
+    status: str = Field(default="running", max_length=32)  # pending | running | completed | failed | cancelled
+    captain_plan_version: Optional[str] = Field(default=None, max_length=64)
+    error_code: Optional[str] = Field(default=None, max_length=64)
+    error_message: Optional[str] = Field(default=None, max_length=1024)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class AIStageLog(SQLModel, table=True):
+    """Phase 7: per-stage record within an :class:`AIRun` (internal cost vs customer minutes deferred)."""
+
+    __tablename__ = "ai_stage_logs"
+    __table_args__ = (Index("ix_ai_stage_logs_run", "ai_run_id", "stage_name"),)
+
+    id: str = Field(default_factory=lambda: new_id("ais"), primary_key=True)
+    ai_run_id: str = Field(foreign_key="ai_runs.id", index=True)
+    job_id: str = Field(foreign_key="jobs.id", index=True)
+    stage_name: str = Field(max_length=128)
+    status: str = Field(default="pending", max_length=32)  # pending | running | completed | failed | skipped
+    provider_name: Optional[str] = Field(default=None, max_length=64)
+    model_name: Optional[str] = Field(default=None, max_length=128)
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Internal-only estimate (USD or arbitrary units); **not** customer processing minutes.
+    cost_estimate_internal: Optional[float] = None
+    validation_status: Optional[str] = Field(default=None, max_length=32)
+    error_code: Optional[str] = Field(default=None, max_length=64)
+    error_message: Optional[str] = Field(default=None, max_length=2048)
+    provider_request_id: Optional[str] = Field(default=None, max_length=128)
+    extra_json: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class AIUsageLog(SQLModel, table=True):
     __tablename__ = "ai_usage_logs"
 
