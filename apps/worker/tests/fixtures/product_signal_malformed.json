@@ -1,0 +1,17 @@
+{
+  "signals": [],
+  "item_candidates": [
+    {
+      "candidate_id": "c1",
+      "name_stub": "x",
+      "title_claim_status": "unknown",
+      "price_status": "unknown",
+      "availability_status": "unknown",
+      "external_link_status": "deferred",
+      "price_usd": 19.99
+    }
+  ],
+  "product_visual_evidence": [],
+  "associations": [],
+  "grid_quality": null
+}
