@@ -26,10 +26,182 @@ def _cols(bind, table: str) -> set[str]:
     return {c["name"] for c in insp.get_columns(table)}
 
 
+def _pg_jobstatus_enum_label_count(bind) -> int:
+    row = bind.execute(
+        text(
+            """
+            SELECT COUNT(*)::int FROM pg_enum e
+            JOIN pg_type t ON e.enumtypid = t.oid
+            WHERE t.typname = 'jobstatus'
+            """
+        )
+    ).scalar()
+    return int(row or 0)
+
+
+def _pg_jobstatus_has_created_label(bind) -> bool:
+    row = bind.execute(
+        text(
+            """
+            SELECT 1 FROM pg_enum e
+            JOIN pg_type t ON e.enumtypid = t.oid
+            WHERE t.typname = 'jobstatus' AND e.enumlabel = 'CREATED'
+            LIMIT 1
+            """
+        )
+    ).fetchone()
+    return row is not None
+
+
+def _jobs_status_column_meta(bind):
+    return bind.execute(
+        text(
+            """
+            SELECT data_type, udt_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'status'
+            """
+        )
+    ).fetchone()
+
+
+def _migrate_legacy_railway_jobstatus_enum(bind) -> None:
+    """v0.1 Railway bridge: older DBs used a native ``jobstatus`` enum with UPPERCASE pipeline labels.
+
+    SQLModel ``JobStatus`` persists lowercase values (``uploaded``, ``completed``, …) that are not
+    members of that legacy enum, so ``UPDATE … SET status = 'uploaded'`` fails before this repair.
+
+    Repair: cast through VARCHAR with ``lower(status::text)``, drop the wide enum, recreate a
+    6-label enum matching ``app.models.JobStatus``, map legacy literals (including ``complete`` /
+    ``COMPLETE``), then cast the column back to ``jobstatus``. Idempotent for re-runs and partial
+    failures (orphaned ``jobstatus`` type, VARCHAR column left unattached, etc.).
+    """
+    insp = inspect(bind)
+    if "jobs" not in insp.get_table_names():
+        return
+
+    meta = _jobs_status_column_meta(bind)
+    if not meta:
+        return
+    data_type, udt_name = meta[0], meta[1]
+    enum_n = _pg_jobstatus_enum_label_count(bind)
+
+    # Already on the slim enum used by current models.
+    if data_type == "USER-DEFINED" and udt_name == "jobstatus":
+        if enum_n == 6 and not _pg_jobstatus_has_created_label(bind):
+            return
+
+    wide_or_legacy = enum_n > 6 or _pg_jobstatus_has_created_label(bind)
+
+    if wide_or_legacy:
+        if data_type == "USER-DEFINED" and udt_name == "jobstatus":
+            op.execute(
+                text(
+                    "ALTER TABLE jobs ALTER COLUMN status TYPE VARCHAR(64) "
+                    "USING (lower(status::text))"
+                )
+            )
+        if _pg_jobstatus_enum_label_count(bind) > 0:
+            op.execute(text("DROP TYPE jobstatus"))
+        op.execute(
+            text(
+                "CREATE TYPE jobstatus AS ENUM ("
+                "'uploaded', 'queued', 'processing', 'completed', 'failed', 'cancelled')"
+            )
+        )
+        op.execute(
+            text(
+                """
+                UPDATE jobs SET status = CASE status
+                  WHEN 'created' THEN 'uploaded'
+                  WHEN 'estimating' THEN 'uploaded'
+                  WHEN 'awaiting_credit_reservation' THEN 'uploaded'
+                  WHEN 'queued' THEN 'queued'
+                  WHEN 'probing' THEN 'processing'
+                  WHEN 'extracting_audio' THEN 'processing'
+                  WHEN 'chunking' THEN 'processing'
+                  WHEN 'transcribing' THEN 'processing'
+                  WHEN 'generating_outputs' THEN 'processing'
+                  WHEN 'qa_validating' THEN 'processing'
+                  WHEN 'exporting' THEN 'processing'
+                  WHEN 'complete' THEN 'completed'
+                  WHEN 'failed' THEN 'failed'
+                  WHEN 'cancelled' THEN 'cancelled'
+                  ELSE 'processing'
+                END
+                WHERE status IN (
+                  'created','estimating','awaiting_credit_reservation','queued','probing',
+                  'extracting_audio','chunking','transcribing','generating_outputs',
+                  'qa_validating','exporting','complete','failed','cancelled'
+                )
+                """
+            )
+        )
+        op.execute(
+            text(
+                "ALTER TABLE jobs ALTER COLUMN status TYPE jobstatus USING (status::jobstatus)"
+            )
+        )
+        return
+
+    # Partial run: VARCHAR data but ``jobstatus`` type was dropped and not recreated.
+    if data_type in ("character varying", "text") and enum_n == 0:
+        op.execute(
+            text(
+                "CREATE TYPE jobstatus AS ENUM ("
+                "'uploaded', 'queued', 'processing', 'completed', 'failed', 'cancelled')"
+            )
+        )
+        op.execute(
+            text(
+                """
+                UPDATE jobs SET status = CASE status
+                  WHEN 'created' THEN 'uploaded'
+                  WHEN 'estimating' THEN 'uploaded'
+                  WHEN 'awaiting_credit_reservation' THEN 'uploaded'
+                  WHEN 'queued' THEN 'queued'
+                  WHEN 'probing' THEN 'processing'
+                  WHEN 'extracting_audio' THEN 'processing'
+                  WHEN 'chunking' THEN 'processing'
+                  WHEN 'transcribing' THEN 'processing'
+                  WHEN 'generating_outputs' THEN 'processing'
+                  WHEN 'qa_validating' THEN 'processing'
+                  WHEN 'exporting' THEN 'processing'
+                  WHEN 'complete' THEN 'completed'
+                  WHEN 'failed' THEN 'failed'
+                  WHEN 'cancelled' THEN 'cancelled'
+                  ELSE 'processing'
+                END
+                WHERE status IN (
+                  'created','estimating','awaiting_credit_reservation','queued','probing',
+                  'extracting_audio','chunking','transcribing','generating_outputs',
+                  'qa_validating','exporting','complete','failed','cancelled'
+                )
+                """
+            )
+        )
+        op.execute(
+            text(
+                "ALTER TABLE jobs ALTER COLUMN status TYPE jobstatus USING (status::jobstatus)"
+            )
+        )
+        return
+
+    # Slim enum exists but column is still VARCHAR (interrupted before final cast).
+    if data_type in ("character varying", "text") and enum_n == 6:
+        op.execute(
+            text(
+                "ALTER TABLE jobs ALTER COLUMN status TYPE jobstatus USING (status::jobstatus)"
+            )
+        )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name != "postgresql":
         return
+
+    _migrate_legacy_railway_jobstatus_enum(bind)
 
     cols_w = _cols(bind, "credit_wallets")
     if "balance_available" in cols_w and "processing_minutes_available" not in cols_w:
@@ -149,14 +321,16 @@ def upgrade() -> None:
         op.alter_column("job_outputs", "schema_version", server_default=None)
 
     if "jobs" in inspect(bind).get_table_names():
-        op.execute(
-            text(
-                """
-                UPDATE jobs SET failure_reason = failure_message
-                WHERE failure_reason IS NULL AND failure_message IS NOT NULL
-                """
+        cols_jobs = _cols(bind, "jobs")
+        if "failure_message" in cols_jobs and "failure_reason" in cols_jobs:
+            op.execute(
+                text(
+                    """
+                    UPDATE jobs SET failure_reason = failure_message
+                    WHERE failure_reason IS NULL AND failure_message IS NOT NULL
+                    """
+                )
             )
-        )
         op.execute(
             text(
                 """
@@ -175,32 +349,6 @@ def upgrade() -> None:
                 FROM media_assets AS m
                 WHERE j.media_asset_id = m.id AND j.source_content_type IS NULL
                   AND m.upload_content_type IS NOT NULL
-                """
-            )
-        )
-        op.execute(
-            text(
-                """
-                UPDATE jobs SET status = CASE status
-                  WHEN 'created' THEN 'uploaded'
-                  WHEN 'estimating' THEN 'uploaded'
-                  WHEN 'awaiting_credit_reservation' THEN 'uploaded'
-                  WHEN 'queued' THEN 'queued'
-                  WHEN 'probing' THEN 'processing'
-                  WHEN 'extracting_audio' THEN 'processing'
-                  WHEN 'chunking' THEN 'processing'
-                  WHEN 'transcribing' THEN 'processing'
-                  WHEN 'generating_outputs' THEN 'processing'
-                  WHEN 'qa_validating' THEN 'processing'
-                  WHEN 'exporting' THEN 'processing'
-                  WHEN 'complete' THEN 'completed'
-                  ELSE status
-                END
-                WHERE status IN (
-                  'created','estimating','awaiting_credit_reservation','queued','probing',
-                  'extracting_audio','chunking','transcribing','generating_outputs',
-                  'qa_validating','exporting','complete'
-                )
                 """
             )
         )
