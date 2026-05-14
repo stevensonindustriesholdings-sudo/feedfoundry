@@ -73,9 +73,41 @@ def _mock_client_cm(inner: MagicMock) -> MagicMock:
 def test_complete_fail_closed_without_runner_flag(monkeypatch: pytest.MonkeyPatch):
     _canary_env(monkeypatch)
     monkeypatch.delenv("FF_OPENAI_CANARY_RUNNER_ENABLED", raising=False)
+    monkeypatch.delenv("FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE", raising=False)
     shell = OpenAIStructuredProviderShell()
     with pytest.raises(ProviderDisabledError, match=CanaryFailClosedCode.CANARY_RUNNER_FLAG_OFF.value):
         shell.complete(_factsheet_request())
+
+
+def test_complete_http_unlocked_by_enrichment_live_without_runner(monkeypatch: pytest.MonkeyPatch):
+    _canary_env(monkeypatch)
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    monkeypatch.delenv("FF_OPENAI_CANARY_RUNNER_ENABLED", raising=False)
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE", "true")
+    body = {"title": "T", "summary": "S", "key_facts": ["a"]}
+    api_json = {
+        "id": "resp_enrichment_gate_1",
+        "object": "response",
+        "status": "completed",
+        "model": "gpt-4.1-mini",
+        "output": [
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": json.dumps(body)}],
+            }
+        ],
+        "usage": {"input_tokens": 3, "output_tokens": 4, "total_tokens": 7},
+    }
+    inner = MagicMock()
+    inner.post.return_value = httpx.Response(200, json=api_json)
+    with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
+        shell = OpenAIStructuredProviderShell()
+        resp = shell.complete(_factsheet_request())
+    assert resp.parsed_json == body
+    inner.post.assert_called_once()
+    _, kwargs = inner.post.call_args
+    assert kwargs["json"]["text"]["format"]["schema"].get("title") == "P7CanaryFactsheetLivePayload"
 
 
 def test_complete_success_parses_usage_and_output(monkeypatch: pytest.MonkeyPatch):

@@ -130,6 +130,7 @@ def test_canary_all_gates_complete_fail_closed_without_runner(monkeypatch: pytes
     monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
     _canary_env(monkeypatch)
     monkeypatch.delenv("FF_OPENAI_CANARY_RUNNER_ENABLED", raising=False)
+    monkeypatch.delenv("FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE", raising=False)
     prov = get_structured_ai_provider()
     assert prov.name == "openai"
     with pytest.raises(ProviderDisabledError, match=CanaryFailClosedCode.CANARY_RUNNER_FLAG_OFF.value):

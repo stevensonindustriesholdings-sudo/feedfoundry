@@ -118,10 +118,40 @@ def test_flag_on_persists_airun_transcript_validates_skips_visual_and_product(mo
         by_name = {s.stage_name: s for s in stages}
         assert by_name["transcript_intelligence"].status == "completed"
         assert by_name["transcript_intelligence"].validation_status == "accepted"
+        ex = by_name["transcript_intelligence"].extra_json or {}
+        assert ex.get("artifact_count", 0) >= 1
+        assert "artifact_digest" in ex
         assert by_name["visual_analysis"].status == "skipped"
         assert by_name["visual_analysis"].error_message == "no_visual_inputs"
         assert by_name["product_signal"].status == "skipped"
         assert by_name["product_signal"].error_message == "no_product_images"
+
+
+def test_enrichment_openai_live_no_key_falls_back_mock_no_http(monkeypatch, sqlite_engine):
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_ENABLED", "1")
+    monkeypatch.setenv("FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE", "1")
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "2")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.5")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "45")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from ai.pipeline import maybe_run_mock_ai_job_enrichment
+
+    org_id, job_id, ma_id = "org_ai_nk", "job_ai_nk", "ma_ai_nk"
+    with Session(sqlite_engine) as session:
+        job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
+        mi = {"schema_version": "1.0", "duration_seconds": 1.0, "chunk_plan": []}
+        tx = {"segments": [{"start": 0.0, "end": 1.0, "text": "offline enrichment openai flag but no key"}]}
+        with patch("httpx.Client.post") as m_post:
+            maybe_run_mock_ai_job_enrichment(session, job, transcript_payload=tx, media_inspection_payload=mi)
+            m_post.assert_not_called()
+        ti = session.exec(
+            select(AIStageLog).where(AIStageLog.job_id == job_id, AIStageLog.stage_name == "transcript_intelligence")
+        ).one()
+        assert ti.provider_name == "mock"
 
 
 def test_no_credit_ledger_calls_during_enrichment(monkeypatch, sqlite_engine):
