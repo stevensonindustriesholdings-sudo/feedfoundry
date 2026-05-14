@@ -14,6 +14,7 @@ Commercial posture is **annual hosted archive access** and a **creator archive**
 - [docs/phase7-product-grid-extension.md](docs/phase7-product-grid-extension.md) — **Product Grid / product imagery as optional preview/extension** alongside the video/audio/podcast wedge (not ecommerce).
 - [docs/phase7-railway-storage-provider-architecture.md](docs/phase7-railway-storage-provider-architecture.md) — Railway as baseline host only; **worker holds AI provider keys**; **no AI keys in the browser**; S3-compatible storage; mock-provider-first tests for new AI plumbing.
 - [docs/phase7-mock-ai-worker-pipeline.md](docs/phase7-mock-ai-worker-pipeline.md) — optional worker mock AI enrichment (`FF_WORKER_AI_ENRICHMENT_ENABLED`), `AIRun` / `AIStageLog`, internal vs customer processing minutes.
+- [docs/phase7-openai-canary.md](docs/phase7-openai-canary.md) — structured OpenAI canary env matrix, bounded Responses API adapter (fail-closed), synthetic fixture runner.
 - [docs/phase7-ai-run-visibility.md](docs/phase7-ai-run-visibility.md) — read-only **`/v1/admin/ai-runs`** visibility, redaction rules, System page readout.
 
 **Rule:** new AI worker code paths must be **mock-provider-first** in CI until Captain explicitly enables real provider wiring.
