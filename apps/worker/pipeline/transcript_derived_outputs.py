@@ -26,6 +26,14 @@ def derived_from_for_transcript(transcript: dict[str, Any]) -> str:
     return "transcript_stub"
 
 
+def _transcript_origin_label(transcript: dict[str, Any]) -> str:
+    """Customer-safe lineage label (no internal provider codes in copy)."""
+    src = (transcript.get("source") or "").strip()
+    if src == "openai_whisper":
+        return "automated_speech_to_text"
+    return "preview_from_upload"
+
+
 def _clean_display_text(text: str) -> str:
     """Strip internal stub boilerplate so titles and summaries read like customer copy."""
     t = _STUB_NOISE.sub("", text or "")
@@ -224,8 +232,8 @@ def build_faqs_from_transcript(
         {
             "question": "How was this content produced?",
             "answer": (
-                "This bundle was generated with FeedFoundry's deterministic transcript pass "
-                f"({derived_from}) — a fast, repeatable preview before optional paid AI enrichment."
+                "FeedFoundry prepared this bundle from your uploaded recording using "
+                f"{_transcript_origin_label(transcript).replace('_', ' ')}."
             ),
         }
     )
@@ -243,7 +251,7 @@ def build_metadata_from_transcript(
     display = stem.replace("_", " ").replace("-", " ").strip() or "Episode"
     title = (display[:1].upper() + display[1:])[:120] if display else "Episode"
     combined = _combined_text(transcript, max_chars=6000)
-    desc = _extract_summary(combined, 4000) or f"Transcript source={transcript.get('source')}"
+    desc = _extract_summary(combined, 4000) or "Episode prepared from your uploaded media."
     mi = media_inspection or {}
     dur_h = _duration_human(mi.get("duration_seconds"))
     tags = _topics_from_transcript(transcript, max_topics=12)
@@ -273,7 +281,7 @@ def build_metadata_from_transcript(
             "file_size_bytes": mi.get("file_size_bytes"),
         },
         "transcript": {
-            "source": transcript.get("source"),
+            "origin": _transcript_origin_label(transcript),
             "segment_count": len(transcript.get("segments") or []),
             "language_hint": "en",
         },
@@ -340,6 +348,32 @@ def _topics_from_transcript(transcript: dict[str, Any], *, max_topics: int = 8) 
     return out
 
 
+def build_ctas_from_transcript(
+    transcript: dict[str, Any],
+    media_inspection: dict[str, Any] | None,
+    *,
+    derived_from: str,
+) -> dict[str, Any]:
+    """Structured CTAs for RSS/site surfaces; URLs are filled by hosting layer when known."""
+    del media_inspection
+    combined = _combined_text(transcript, max_chars=600)
+    teaser = _extract_summary(combined, 140)
+    ctas: list[dict[str, Any]] = [
+        {"label": "Open full transcript", "intent": "read_transcript", "url": None},
+        {"label": "View chapters", "intent": "view_chapters", "url": None},
+    ]
+    if teaser and len(teaser) > 20:
+        ctas.append(
+            {
+                "label": "Copy episode summary",
+                "intent": "copy_summary",
+                "url": None,
+            }
+        )
+    ctas.append({"label": "Share this episode", "intent": "share_episode", "url": None})
+    return {"schema_version": "1.0", "derived_from": derived_from, "ctas": ctas}
+
+
 def build_hosted_manifest_from_transcript(
     *,
     transcript: dict[str, Any],
@@ -358,6 +392,7 @@ def build_hosted_manifest_from_transcript(
     ch = build_chapters_from_transcript(transcript, media_inspection, derived_from=derived_from)["chapters"][:24]
     facts = build_fact_sheet_from_transcript(transcript, media_inspection, derived_from=derived_from)["facts"][:24]
     faqs = build_faqs_from_transcript(transcript, media_inspection, derived_from=derived_from)["faqs"][:12]
+    cta_block = build_ctas_from_transcript(transcript, media_inspection, derived_from=derived_from)
     topics = _topics_from_transcript(transcript)
     mi = media_inspection or {}
     duration = mi.get("duration_seconds")
@@ -383,13 +418,7 @@ def build_hosted_manifest_from_transcript(
         "topics": topics,
         "facts": [{"statement": f["statement"], "source_span": f.get("source_span")} for f in facts],
         "faqs": faqs,
-        "ctas": [
-            {
-                "label": "Open full transcript",
-                "intent": "read_transcript",
-                "url": None,
-            }
-        ],
+        "ctas": list(cta_block["ctas"]),
         "links": {},
         "seo": {
             "meta_title": meta_title[:120],
@@ -399,9 +428,8 @@ def build_hosted_manifest_from_transcript(
         "outputs_available": list(outputs_available),
         "derived_from": derived_from,
         "transcript_meta": {
-            "source": transcript.get("source"),
+            "source": _transcript_origin_label(transcript),
             "segment_count": len(transcript.get("segments") or []),
-            "combined_preview": combined[:280],
         },
         "media_meta": {
             "duration_seconds": mi.get("duration_seconds"),

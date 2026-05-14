@@ -22,9 +22,22 @@ class CreditLedgerError(Exception):
 @dataclass
 class WalletSnapshot:
     organisation_id: str
-    balance_available: int
-    balance_reserved: int
-    balance_spent_lifetime: int
+    processing_minutes_available: int
+    processing_minutes_reserved: int
+    processing_minutes_spent_lifetime: int
+
+    @property
+    def balance_available(self) -> int:
+        """Deprecated: use ``processing_minutes_available``."""
+        return self.processing_minutes_available
+
+    @property
+    def balance_reserved(self) -> int:
+        return self.processing_minutes_reserved
+
+    @property
+    def balance_spent_lifetime(self) -> int:
+        return self.processing_minutes_spent_lifetime
 
 
 def ledger_reserve_key(job_id: str) -> str:
@@ -81,9 +94,9 @@ def _find_idempotent_txn(session: Session, idempotency_key: str) -> Optional[Cre
 def _snapshot_from_wallet(wallet: CreditWallet) -> WalletSnapshot:
     return WalletSnapshot(
         organisation_id=wallet.organisation_id,
-        balance_available=wallet.balance_available,
-        balance_reserved=wallet.balance_reserved,
-        balance_spent_lifetime=wallet.balance_spent_lifetime,
+        processing_minutes_available=wallet.processing_minutes_available,
+        processing_minutes_reserved=wallet.processing_minutes_reserved,
+        processing_minutes_spent_lifetime=wallet.processing_minutes_spent_lifetime,
     )
 
 
@@ -95,7 +108,7 @@ def _record_txn(
     job_id: Optional[str],
     type_: CreditTransactionType,
     amount: int,
-    balance_available_after: int,
+    processing_minutes_available_after: int,
     memo: Optional[str] = None,
     idempotency_key: Optional[str] = None,
     stripe_reference: Optional[str] = None,
@@ -106,7 +119,7 @@ def _record_txn(
         job_id=job_id,
         type=type_,
         amount=amount,
-        balance_after=balance_available_after,
+        processing_minutes_available_after=processing_minutes_available_after,
         memo=memo,
         idempotency_key=idempotency_key,
         stripe_reference=stripe_reference,
@@ -115,7 +128,7 @@ def _record_txn(
     session.add(txn)
 
 
-def reserve_credits(
+def reserve_processing_minutes(
     session: Session,
     *,
     organisation_id: str,
@@ -123,6 +136,7 @@ def reserve_credits(
     amount: int,
     idempotency_key: str,
 ) -> WalletSnapshot:
+    """Move minutes from available → reserved for an active job (no spend yet)."""
     if amount < 0:
         raise CreditLedgerError("reserve amount must be non-negative")
     if not idempotency_key:
@@ -134,11 +148,11 @@ def reserve_credits(
         session.refresh(wallet)
         return _snapshot_from_wallet(wallet)
 
-    if wallet.balance_available < amount:
-        raise CreditLedgerError("insufficient_available_credits")
+    if wallet.processing_minutes_available < amount:
+        raise CreditLedgerError("insufficient_processing_allowance")
 
-    wallet.balance_available -= amount
-    wallet.balance_reserved += amount
+    wallet.processing_minutes_available -= amount
+    wallet.processing_minutes_reserved += amount
     wallet.updated_at = utcnow()
     session.add(wallet)
     _record_txn(
@@ -148,7 +162,7 @@ def reserve_credits(
         job_id=job_id,
         type_=CreditTransactionType.RESERVE,
         amount=amount,
-        balance_available_after=wallet.balance_available,
+        processing_minutes_available_after=wallet.processing_minutes_available,
         memo="reserve_for_job",
         idempotency_key=idempotency_key,
     )
@@ -156,7 +170,7 @@ def reserve_credits(
     return _snapshot_from_wallet(wallet)
 
 
-def release_reserved_credits(
+def release_reserved_processing_minutes(
     session: Session,
     *,
     organisation_id: str,
@@ -175,11 +189,11 @@ def release_reserved_credits(
         session.refresh(wallet)
         return _snapshot_from_wallet(wallet)
 
-    if wallet.balance_reserved < amount:
+    if wallet.processing_minutes_reserved < amount:
         raise CreditLedgerError("cannot_release_more_than_reserved")
 
-    wallet.balance_reserved -= amount
-    wallet.balance_available += amount
+    wallet.processing_minutes_reserved -= amount
+    wallet.processing_minutes_available += amount
     wallet.updated_at = utcnow()
     session.add(wallet)
     _record_txn(
@@ -189,7 +203,7 @@ def release_reserved_credits(
         job_id=job_id,
         type_=CreditTransactionType.RELEASE,
         amount=amount,
-        balance_available_after=wallet.balance_available,
+        processing_minutes_available_after=wallet.processing_minutes_available,
         memo="release_reserved",
         idempotency_key=idempotency_key,
     )
@@ -197,7 +211,7 @@ def release_reserved_credits(
     return _snapshot_from_wallet(wallet)
 
 
-def debit_reserved_credits(
+def debit_reserved_processing_minutes(
     session: Session,
     *,
     organisation_id: str,
@@ -205,6 +219,7 @@ def debit_reserved_credits(
     amount: int,
     idempotency_key: str,
 ) -> WalletSnapshot:
+    """Consume reserved minutes (typically on successful job completion only)."""
     if amount < 0:
         raise CreditLedgerError("debit amount must be non-negative")
     if not idempotency_key:
@@ -216,11 +231,11 @@ def debit_reserved_credits(
         session.refresh(wallet)
         return _snapshot_from_wallet(wallet)
 
-    if wallet.balance_reserved < amount:
+    if wallet.processing_minutes_reserved < amount:
         raise CreditLedgerError("cannot_debit_more_than_reserved")
 
-    wallet.balance_reserved -= amount
-    wallet.balance_spent_lifetime += amount
+    wallet.processing_minutes_reserved -= amount
+    wallet.processing_minutes_spent_lifetime += amount
     wallet.updated_at = utcnow()
     session.add(wallet)
     _record_txn(
@@ -230,13 +245,138 @@ def debit_reserved_credits(
         job_id=job_id,
         type_=CreditTransactionType.DEBIT,
         amount=amount,
-        balance_available_after=wallet.balance_available,
-        memo="debit_for_job",
+        processing_minutes_available_after=wallet.processing_minutes_available,
+        memo="debit_on_job_completion",
         idempotency_key=idempotency_key,
         stripe_reference=None,
     )
     session.flush()
     return _snapshot_from_wallet(wallet)
+
+
+def purchase_processing_minutes_from_stripe(
+    session: Session,
+    *,
+    organisation_id: str,
+    processing_minutes: int,
+    idempotency_key: str,
+    stripe_reference: Optional[str] = None,
+    memo: Optional[str] = None,
+) -> WalletSnapshot:
+    if processing_minutes <= 0:
+        raise CreditLedgerError("processing_minutes must be positive")
+    if not idempotency_key:
+        raise CreditLedgerError("idempotency_key required")
+
+    wallet = get_wallet_for_update(session, organisation_id)
+    existing = _find_idempotent_txn(session, idempotency_key)
+    if existing:
+        session.refresh(wallet)
+        return _snapshot_from_wallet(wallet)
+
+    wallet.processing_minutes_available += processing_minutes
+    wallet.updated_at = utcnow()
+    session.add(wallet)
+    _record_txn(
+        session,
+        organisation_id=organisation_id,
+        wallet_id=wallet.id,
+        job_id=None,
+        type_=CreditTransactionType.PURCHASE,
+        amount=processing_minutes,
+        processing_minutes_available_after=wallet.processing_minutes_available,
+        memo=memo or "stripe_processing_minute_pack",
+        idempotency_key=idempotency_key,
+        stripe_reference=stripe_reference,
+    )
+    session.flush()
+    return _snapshot_from_wallet(wallet)
+
+
+def grant_annual_processing_minutes_from_stripe(
+    session: Session,
+    *,
+    organisation_id: str,
+    processing_minutes: int,
+    idempotency_key: str,
+    stripe_reference: Optional[str] = None,
+    memo: Optional[str] = None,
+) -> WalletSnapshot:
+    if processing_minutes < 0:
+        raise CreditLedgerError("processing_minutes must be non-negative")
+    if not idempotency_key:
+        raise CreditLedgerError("idempotency_key required")
+
+    wallet = get_wallet_for_update(session, organisation_id)
+    existing = _find_idempotent_txn(session, idempotency_key)
+    if existing:
+        session.refresh(wallet)
+        return _snapshot_from_wallet(wallet)
+
+    wallet.processing_minutes_available += processing_minutes
+    wallet.updated_at = utcnow()
+    session.add(wallet)
+    _record_txn(
+        session,
+        organisation_id=organisation_id,
+        wallet_id=wallet.id,
+        job_id=None,
+        type_=CreditTransactionType.ANNUAL_GRANT,
+        amount=processing_minutes,
+        processing_minutes_available_after=wallet.processing_minutes_available,
+        memo=memo or "stripe_annual_included_processing_minutes",
+        idempotency_key=idempotency_key,
+        stripe_reference=stripe_reference,
+    )
+    session.flush()
+    return _snapshot_from_wallet(wallet)
+
+
+def claw_back_processing_minutes_for_stripe_refund(
+    session: Session,
+    *,
+    organisation_id: str,
+    processing_minutes: int,
+    idempotency_key: str,
+    stripe_reference: Optional[str] = None,
+    memo: Optional[str] = None,
+) -> WalletSnapshot:
+    """Remove minutes previously granted or purchased (compensating transaction)."""
+    if processing_minutes <= 0:
+        raise CreditLedgerError("processing_minutes must be positive")
+    if not idempotency_key:
+        raise CreditLedgerError("idempotency_key required")
+
+    wallet = get_wallet_for_update(session, organisation_id)
+    existing = _find_idempotent_txn(session, idempotency_key)
+    if existing:
+        session.refresh(wallet)
+        return _snapshot_from_wallet(wallet)
+
+    claw = min(wallet.processing_minutes_available, processing_minutes)
+    wallet.processing_minutes_available -= claw
+    wallet.updated_at = utcnow()
+    session.add(wallet)
+    _record_txn(
+        session,
+        organisation_id=organisation_id,
+        wallet_id=wallet.id,
+        job_id=None,
+        type_=CreditTransactionType.REFUND,
+        amount=claw,
+        processing_minutes_available_after=wallet.processing_minutes_available,
+        memo=memo or "stripe_refund_processing_minute_clawback",
+        idempotency_key=idempotency_key,
+        stripe_reference=stripe_reference,
+    )
+    session.flush()
+    return _snapshot_from_wallet(wallet)
+
+
+# --- Backwards-compatible names (legacy “credits” keyword) ---
+reserve_credits = reserve_processing_minutes
+release_reserved_credits = release_reserved_processing_minutes
+debit_reserved_credits = debit_reserved_processing_minutes
 
 
 def purchase_credits_from_stripe(
@@ -248,34 +388,14 @@ def purchase_credits_from_stripe(
     stripe_reference: Optional[str] = None,
     memo: Optional[str] = None,
 ) -> WalletSnapshot:
-    if credits <= 0:
-        raise CreditLedgerError("credits must be positive")
-    if not idempotency_key:
-        raise CreditLedgerError("idempotency_key required")
-
-    wallet = get_wallet_for_update(session, organisation_id)
-    existing = _find_idempotent_txn(session, idempotency_key)
-    if existing:
-        session.refresh(wallet)
-        return _snapshot_from_wallet(wallet)
-
-    wallet.balance_available += credits
-    wallet.updated_at = utcnow()
-    session.add(wallet)
-    _record_txn(
+    return purchase_processing_minutes_from_stripe(
         session,
         organisation_id=organisation_id,
-        wallet_id=wallet.id,
-        job_id=None,
-        type_=CreditTransactionType.PURCHASE,
-        amount=credits,
-        balance_available_after=wallet.balance_available,
-        memo=memo or "stripe_credit_pack",
+        processing_minutes=credits,
         idempotency_key=idempotency_key,
         stripe_reference=stripe_reference,
+        memo=memo,
     )
-    session.flush()
-    return _snapshot_from_wallet(wallet)
 
 
 def grant_annual_credits_from_stripe(
@@ -287,34 +407,14 @@ def grant_annual_credits_from_stripe(
     stripe_reference: Optional[str] = None,
     memo: Optional[str] = None,
 ) -> WalletSnapshot:
-    if credits < 0:
-        raise CreditLedgerError("credits must be non-negative")
-    if not idempotency_key:
-        raise CreditLedgerError("idempotency_key required")
-
-    wallet = get_wallet_for_update(session, organisation_id)
-    existing = _find_idempotent_txn(session, idempotency_key)
-    if existing:
-        session.refresh(wallet)
-        return _snapshot_from_wallet(wallet)
-
-    wallet.balance_available += credits
-    wallet.updated_at = utcnow()
-    session.add(wallet)
-    _record_txn(
+    return grant_annual_processing_minutes_from_stripe(
         session,
         organisation_id=organisation_id,
-        wallet_id=wallet.id,
-        job_id=None,
-        type_=CreditTransactionType.ANNUAL_GRANT,
-        amount=credits,
-        balance_available_after=wallet.balance_available,
-        memo=memo or "stripe_annual_included_credits",
+        processing_minutes=credits,
         idempotency_key=idempotency_key,
         stripe_reference=stripe_reference,
+        memo=memo,
     )
-    session.flush()
-    return _snapshot_from_wallet(wallet)
 
 
 def claw_back_credits_for_stripe_refund(
@@ -326,33 +426,11 @@ def claw_back_credits_for_stripe_refund(
     stripe_reference: Optional[str] = None,
     memo: Optional[str] = None,
 ) -> WalletSnapshot:
-    """Remove credits previously granted or purchased (compensating transaction)."""
-    if credits <= 0:
-        raise CreditLedgerError("credits must be positive")
-    if not idempotency_key:
-        raise CreditLedgerError("idempotency_key required")
-
-    wallet = get_wallet_for_update(session, organisation_id)
-    existing = _find_idempotent_txn(session, idempotency_key)
-    if existing:
-        session.refresh(wallet)
-        return _snapshot_from_wallet(wallet)
-
-    claw = min(wallet.balance_available, credits)
-    wallet.balance_available -= claw
-    wallet.updated_at = utcnow()
-    session.add(wallet)
-    _record_txn(
+    return claw_back_processing_minutes_for_stripe_refund(
         session,
         organisation_id=organisation_id,
-        wallet_id=wallet.id,
-        job_id=None,
-        type_=CreditTransactionType.REFUND,
-        amount=claw,
-        balance_available_after=wallet.balance_available,
-        memo=memo or "stripe_refund_credit_clawback",
+        processing_minutes=credits,
         idempotency_key=idempotency_key,
         stripe_reference=stripe_reference,
+        memo=memo,
     )
-    session.flush()
-    return _snapshot_from_wallet(wallet)

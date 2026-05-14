@@ -1,6 +1,10 @@
 # Railway deployment (FeedFoundry)
 
-This document describes a **staging-oriented** Railway layout: API, worker, and Postgres. The commercial model remains **annual hosted archive access** plus **processing credits** (not monthly subscription SaaS).
+This document describes a **staging-oriented** Railway layout: API, worker, and Postgres. The commercial model remains **annual hosted archive access** plus a **processing allowance** measured in **processing minutes** / **processing hours** (internal ledger + Stripe env names may still say `CREDITS`; values map to whole minutes — customer copy should not say “credits”). Not monthly subscription SaaS.
+
+**Current staging service names (workspace convention):** API **`api-v2-IQho`**, worker **`worker-v2`**. Treat other similarly named services as legacy unless explicitly in scope.
+
+The API still serves **`GET /v1/account/credits`** as a **deprecated compatibility alias** for **`GET /v1/account`** / **`GET /v1/account/usage`** — same JSON; integrators should prefer the canonical paths.
 
 ## Connect GitHub so Railway builds this monorepo (not a bare image)
 

@@ -1,6 +1,6 @@
 # FeedFoundry Web (`apps/web`)
 
-Customer-facing **Next.js (App Router)** app: annual hosted archive positioning, processing credits, upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.”
+Customer-facing **Next.js (App Router)** app: **annual hosted archive** and **creator archive** positioning, **processing allowance** / **processing time** (avoid “credits” in customer copy), upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.” Full stack setup: [docs/runbook.md](../../docs/runbook.md).
 
 ## Requirements
 
@@ -29,7 +29,7 @@ From **repository root**:
 cd apps/web
 npm install
 cp .env.example .env.local
-# Edit .env.local — set FEEDFOUNDRY_INTERNAL_API_KEY to match Railway api-v2
+# Edit .env.local — set FEEDFOUNDRY_INTERNAL_API_KEY to match Railway API service **api-v2-IQho** (FF_INTERNAL_API_KEY)
 npm run dev
 ```
 
@@ -54,7 +54,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Smoke path
 
-On **Dashboard**, use **Backend smoke checks** (manual buttons). Full credit-spending flow stays on **Upload** with explicit **“Confirm job creation”**.
+On **Dashboard**, use **Backend smoke checks** (manual buttons). Full job-creation flow stays on **Upload** with explicit **“Confirm job creation”**; the API may **reserve estimated processing minutes** while a job is active, and releases that reservation on **failure** or **cancellation** (those terminal states do not debit actual processing time from the allowance).
 
 ## Staging API (current)
 

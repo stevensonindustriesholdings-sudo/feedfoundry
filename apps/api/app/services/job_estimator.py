@@ -16,13 +16,13 @@ def load_routing_config(path: Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def estimate_job_credits(
+def estimate_job_processing_minutes(
     *,
     routing_path: Path,
     requested_outputs: List[str],
     media_duration_seconds: Optional[float],
 ) -> int:
-    """Upper-bound estimate from ai-routing module ceilings + transcribe hourly rate."""
+    """Upper-bound processing minutes from ai-routing module ceilings + transcribe hourly rate."""
     cfg = load_routing_config(routing_path)
     modules: dict[str, Any] = cfg.get("modules") or {}
     hours = (media_duration_seconds or 3600) / 3600.0
@@ -61,3 +61,7 @@ def estimate_job_credits(
         total += float((modules.get("chapters") or {}).get("cost_ceiling_credits") or 2)
 
     return max(1, int(math.ceil(total)))
+
+
+# Legacy name (YAML still uses cost_ceiling_credits_* knobs as internal ceilings).
+estimate_job_credits = estimate_job_processing_minutes

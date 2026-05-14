@@ -140,7 +140,7 @@ def _resolve_organisation_id(session_obj: dict[str, Any]) -> Optional[str]:
 def _annual_plan_for_price(
     price_id: str, settings: Settings
 ) -> Optional[tuple[str, int]]:
-    """Returns (plan_code, included_credits) or None."""
+    """Returns (plan_code, included_processing_minutes_annual) or None."""
     pid = (price_id or "").strip()
     if not pid:
         return None
@@ -181,7 +181,7 @@ def _extend_or_create_annual_access(
     *,
     organisation_id: str,
     plan_code: str,
-    included_credits: int,
+    included_processing_minutes_annual: int,
     checkout_session_id: str,
     payment_intent_id: Optional[str],
     stripe_event_id: str,
@@ -202,7 +202,7 @@ def _extend_or_create_annual_access(
         aa.period_end = new_end
         aa.hosting_until = new_end
         aa.plan_code = plan_code
-        aa.included_credits = included_credits
+        aa.included_processing_minutes_annual = included_processing_minutes_annual
         aa.stripe_checkout_session_id = checkout_session_id
         if payment_intent_id:
             aa.stripe_payment_intent_id = payment_intent_id
@@ -218,20 +218,20 @@ def _extend_or_create_annual_access(
                 period_start=now,
                 period_end=now + timedelta(days=days),
                 hosting_until=now + timedelta(days=days),
-                included_credits=included_credits,
+                included_processing_minutes_annual=included_processing_minutes_annual,
                 stripe_checkout_session_id=checkout_session_id,
                 stripe_payment_intent_id=payment_intent_id,
             )
         )
 
-    if included_credits > 0:
+    if included_processing_minutes_annual > 0:
         grant_annual_credits_from_stripe(
             session,
             organisation_id=organisation_id,
-            credits=included_credits,
+            credits=included_processing_minutes_annual,
             idempotency_key=f"stripe:event:{stripe_event_id}:annual_grant",
             stripe_reference=payment_intent_id or checkout_session_id,
-            memo=f"annual_access_included_credits:{plan_code}",
+            memo=f"annual_access_included_processing_minutes:{plan_code}",
         )
 
 
@@ -292,7 +292,7 @@ def handle_checkout_session_completed(
                 session,
                 organisation_id=org_id,
                 plan_code=plan_code,
-                included_credits=included,
+                included_processing_minutes_annual=included,
                 checkout_session_id=checkout_session_id,
                 payment_intent_id=payment_intent_id,
                 stripe_event_id=event_id,

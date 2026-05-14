@@ -10,7 +10,7 @@ export function StagingLimitations() {
       <ul className="mt-2 list-inside list-disc space-y-1 text-amber-100/90">
         <li>Full AI transcription may still be stubbed; outputs can be vertical-slice artefacts.</li>
         <li>Stripe Checkout session creation may not be wired from this app yet — use Pricing placeholders.</li>
-        <li>Annual access and credits require a configured org in the API (seed or live purchase).</li>
+        <li>Annual access and processing allowance require a configured org in the API (seed or live purchase).</li>
       </ul>
     </aside>
   );

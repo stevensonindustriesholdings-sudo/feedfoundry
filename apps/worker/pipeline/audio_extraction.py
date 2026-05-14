@@ -10,6 +10,8 @@ from typing import Any
 
 from media_inspection import run_ffprobe_json
 
+from pipeline.errors import JobProcessingFailure
+
 log = logging.getLogger("feedfoundry.worker.audio")
 
 
@@ -112,7 +114,10 @@ def run_audio_extraction(
                 os.unlink(out_path)
             except OSError:
                 pass
-            return None, base_meta
+            raise JobProcessingFailure(
+                "audio_extraction_failed",
+                f"FFmpeg could not extract audio (exit {proc.returncode}). {err[:800] or 'No stderr.'}",
+            )
 
         size = os.path.getsize(out_path)
         base_meta["success"] = True
@@ -125,6 +130,8 @@ def run_audio_extraction(
         base_meta["source_media_basename"] = os.path.basename(input_path)
         base_meta["extracted_audio_basename"] = os.path.basename(out_path)
         return out_path, base_meta
+    except JobProcessingFailure:
+        raise
     except Exception as exc:
         base_meta["error"] = str(exc)[:2000]
         log.exception("audio_extraction_failed")
@@ -132,4 +139,7 @@ def run_audio_extraction(
             os.unlink(out_path)
         except OSError:
             pass
-        return None, base_meta
+        raise JobProcessingFailure(
+            "audio_extraction_failed",
+            f"Audio extraction raised an unexpected error: {type(exc).__name__}",
+        ) from exc

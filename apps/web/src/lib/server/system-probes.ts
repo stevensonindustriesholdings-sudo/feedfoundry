@@ -43,14 +43,14 @@ export async function probePublicReady(publicBase: string): Promise<SimpleProbe>
 }
 
 /**
- * GET `/v1/account/credits` upstream using the same server credentials as `/api/ff/*` (no loopback fetch).
+ * GET `/v1/account` upstream using the same server credentials as `/api/ff/*` (no loopback fetch).
  */
 export async function probeProxyAccountCredits(): Promise<SimpleProbe> {
-  const url = "GET /v1/account/credits (server credentials, same as /api/ff proxy)";
+  const url = "GET /v1/account (server credentials, same as /api/ff proxy)";
   if (isDevAccountCreditsMockEnabled()) {
     const body = mockAccountCreditsJson();
     return {
-      url: "GET /v1/account/credits (dev mock — default in next dev)",
+      url: "GET /v1/account (dev mock — default in next dev)",
       httpStatus: 200,
       ok: true,
       snippet: trimSnippet(body),
@@ -61,7 +61,7 @@ export async function probeProxyAccountCredits(): Promise<SimpleProbe> {
   try {
     const { defaultOrgId } = getServerConfig();
     const orgId = orgHint || defaultOrgId;
-    const upstream = await forwardToFeedFoundry("/v1/account/credits", { method: "GET", orgId });
+    const upstream = await forwardToFeedFoundry("/v1/account", { method: "GET", orgId });
     const text = await upstream.text();
     return { url, httpStatus: upstream.status, ok: upstream.ok, snippet: trimSnippet(text) };
   } catch (e) {

@@ -32,10 +32,26 @@ class CreateJobRequest(BaseModel):
 
 
 class CreateJobResponse(BaseModel):
+    """Job created; estimated and reserved **processing minutes** (ledger unit)."""
+
     job_id: str
     status: str
-    estimated_credits: int
-    reserved_credits: int
+    estimated_processing_minutes: int
+    reserved_processing_minutes: int
+    estimated_processing_hours: float = Field(
+        description="Rounded hours equivalent of the estimate (display helper).",
+    )
+    # Deprecated legacy aliases preserved one release for older clients.
+    estimated_credits: Optional[int] = Field(
+        default=None,
+        deprecated=True,
+        description="Alias of estimated_processing_minutes for legacy clients.",
+    )
+    reserved_credits: Optional[int] = Field(
+        default=None,
+        deprecated=True,
+        description="Alias of reserved_processing_minutes for legacy clients.",
+    )
 
 
 class JobStatusResponse(BaseModel):
@@ -43,9 +59,28 @@ class JobStatusResponse(BaseModel):
     status: str
     progress_percent: int
     current_stage: Optional[str]
-    estimated_credits: Optional[int]
-    reserved_credits: Optional[int]
-    actual_credits_so_far: Optional[int] = None
+    estimated_processing_minutes: Optional[int] = None
+    reserved_processing_minutes: Optional[int] = None
+    actual_processing_minutes_charged: Optional[int] = None
+    estimated_processing_hours: Optional[float] = None
+    # Deprecated legacy aliases preserved one release for older clients.
+    estimated_credits: Optional[int] = Field(default=None, deprecated=True)
+    reserved_credits: Optional[int] = Field(default=None, deprecated=True)
+    actual_credits_so_far: Optional[int] = Field(default=None, deprecated=True)
+
+
+class JobSummaryItem(BaseModel):
+    job_id: str
+    status: str
+    progress_percent: int
+    current_stage: Optional[str] = None
+    media_asset_id: str
+    created_at: Optional[str] = None
+
+
+class JobListResponse(BaseModel):
+    jobs: List[JobSummaryItem]
+    total: int = 0
 
 
 class OutputItemResponse(BaseModel):
@@ -60,10 +95,61 @@ class JobOutputsResponse(BaseModel):
     outputs: List[OutputItemResponse]
 
 
-class AccountCreditsResponse(BaseModel):
-    annual_access_status: str
+class OutputCatalogEntryResponse(BaseModel):
+    """One doctrine output slot for a specific job; ``ready`` reflects a persisted row."""
+
+    output_type: str
+    title: str
+    ready: bool
+    format: Optional[str] = None
+    download_url: Optional[str] = None
+
+
+class JobOutputsCatalogResponse(BaseModel):
+    job_id: str
+    outputs: List[OutputCatalogEntryResponse]
+
+
+class AccountProcessingBalanceResponse(BaseModel):
+    """Annual hosted archive + remaining **processing minutes** (wallet balance)."""
+
+    annual_archive_access_status: str
     hosting_until: Optional[str]
-    credits_available: int
-    credits_reserved: int
-    credits_spent_lifetime: int
-    next_credit_expiry: Optional[str]
+    processing_minutes_available: int
+    processing_minutes_reserved: int
+    processing_minutes_used_lifetime: int
+    processing_period_ends_on: Optional[str] = None
+    processing_hours_available: float = Field(
+        description="Hours equivalent of available minutes (display helper).",
+    )
+    # Deprecated legacy field names preserved one release for older consumers.
+    credits_available: Optional[int] = Field(default=None, deprecated=True)
+    credits_reserved: Optional[int] = Field(default=None, deprecated=True)
+    credits_spent_lifetime: Optional[int] = Field(default=None, deprecated=True)
+    next_credit_expiry: Optional[str] = Field(default=None, deprecated=True)
+
+
+# Compatibility alias for older imports; canonical name above.
+AccountCreditsResponse = AccountProcessingBalanceResponse
+
+
+class CatalogOutputKind(BaseModel):
+    slug: str
+    title: str
+    description: str
+
+
+class OutputCatalogResponse(BaseModel):
+    """
+    Contract for requested job outputs vs persisted ``job_outputs`` rows.
+
+    Worker may not emit every persisted type for every job; clients should list
+    ``GET /v1/jobs/{id}/outputs`` for concrete artifacts.
+    """
+
+    requested_output_kinds: List[CatalogOutputKind]
+    persisted_output_types: List[CatalogOutputKind]
+    notes: str = (
+        "Request slugs (e.g. transcript) map to stored types (e.g. raw_transcript) in the worker; "
+        "see OpenAPI descriptions on POST /v1/jobs."
+    )

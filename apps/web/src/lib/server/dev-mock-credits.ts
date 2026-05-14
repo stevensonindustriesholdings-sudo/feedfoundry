@@ -1,12 +1,10 @@
 /**
- * Dev-only mock for GET /v1/account/credits — bypasses Railway when the real endpoint is broken.
+ * Dev-only mock for GET /v1/account (and /v1/account/usage) — bypasses Railway when upstream is unavailable.
  * In `next dev`, mock is ON by default (no env to set). Opt out: FEEDFOUNDRY_USE_LIVE_ACCOUNT_CREDITS=1
- * Never used in production (`next start` / NODE_ENV=production).
  */
-
 function truthyEnv(v: string | undefined): boolean {
-  const s = (v || "").trim().toLowerCase();
-  return s === "1" || s === "true" || s === "yes";
+  if (!v) return false;
+  return ["1", "true", "yes", "on"].includes(v.toLowerCase());
 }
 
 /** Default ON in `next dev`; opt out with FEEDFOUNDRY_USE_LIVE_ACCOUNT_CREDITS=1 */
@@ -16,14 +14,17 @@ export function isDevAccountCreditsMockEnabled(): boolean {
   return true;
 }
 
-/** JSON body matching FastAPI `AccountCreditsResponse`. */
+/** JSON body matching FastAPI `AccountProcessingBalanceResponse`. */
 export function mockAccountCreditsJson(): string {
-  const far = new Date();
-  far.setUTCFullYear(far.getUTCFullYear() + 1);
-  const iso = far.toISOString().slice(0, 10);
+  const iso = new Date(Date.now() + 86400e3 * 365).toISOString().slice(0, 10);
   return JSON.stringify({
-    annual_access_status: "active",
+    annual_archive_access_status: "active",
     hosting_until: iso,
+    processing_minutes_available: 300,
+    processing_minutes_reserved: 0,
+    processing_minutes_used_lifetime: 0,
+    processing_period_ends_on: iso,
+    processing_hours_available: 5,
     credits_available: 300,
     credits_reserved: 0,
     credits_spent_lifetime: 0,

@@ -1,13 +1,17 @@
 # AI cost controls
 
-Policy is defined in `ai-routing.yaml` at the repo root and mirrored by env-based monthly USD ceilings (`DEV_MONTHLY_AI_BUDGET_USD`, etc.).
+Policy is defined in `ai-routing.yaml` at the repo root and mirrored by env-based monthly USD ceilings (`DEV_MONTHLY_AI_BUDGET_USD`, etc.). See [runbook.md](./runbook.md) for provider routing, retries, and fallbacks in one place.
 
 ## Rules
 
 1. Every call passes through the AI router with explicit limits and fallbacks.
 2. Log every attempt to `ai_usage_logs` with tokens, latency, cost estimate, provider, model, module, job id, retries, and rate-limit headers when present.
-3. Hard-stop or throttle when global or per-job budgets would be exceeded (`fail_closed_on_missing_cost_estimate`, `fail_closed_on_missing_credit_reservation`).
+3. Hard-stop or throttle when global or per-job budgets would be exceeded (`fail_closed_on_missing_cost_estimate`, `fail_closed_on_missing_credit_reservation` — YAML key name is historical; enforcement is “no AI call without a valid **processing-minute** / ledger reservation on billed paths”).
 4. Model names are **only** read from environment variables referenced in YAML (`model_env`), never hardcoded in Python.
+
+## Providers (engine)
+
+Implementations under `apps/worker/providers/`: OpenAI (baseline transcription + text), Anthropic, Google, Groq, Mistral, DeepSeek, local/OSS JSON repair paths—wired per module in `ai-routing.yaml` primary/fallback pairs.
 
 ## Worker concurrency
 
