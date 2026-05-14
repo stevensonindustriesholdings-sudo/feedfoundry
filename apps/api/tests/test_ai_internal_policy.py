@@ -61,3 +61,39 @@ def test_load_internal_ai_policy_bundle_from_env(monkeypatch: pytest.MonkeyPatch
     bundle = policy.load_internal_ai_policy_bundle_from_env()
     assert bundle.per_job.max_internal_spend_units_per_job == 42.0
     assert bundle.per_job.max_structured_calls_per_job == 7
+
+
+def test_load_ai_canary_gate_config_from_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "1")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "5")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.5")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "30")
+    cfg = policy.load_ai_canary_gate_config_from_env()
+    assert cfg.canary_enabled is True
+    assert cfg.real_provider_enabled is True
+    assert cfg.max_calls == 5
+    assert cfg.max_cost == 0.5
+    assert cfg.timeout_seconds == 30
+
+
+def test_ai_canary_numeric_gates_satisfied():
+    ok = policy.AICanaryGateConfig(
+        canary_enabled=True,
+        real_provider_enabled=True,
+        max_calls=1,
+        max_cost=0.01,
+        timeout_seconds=10,
+    )
+    assert policy.ai_canary_numeric_gates_satisfied(ok)
+    bad = ok.model_copy(update={"max_calls": 0})
+    assert not policy.ai_canary_numeric_gates_satisfied(bad)
+    bad_cost = ok.model_copy(update={"max_cost": 0.0})
+    assert not policy.ai_canary_numeric_gates_satisfied(bad_cost)
+
+
+def test_ai_canary_booleans_allow_real_path():
+    off = policy.AICanaryGateConfig(canary_enabled=False, real_provider_enabled=True)
+    assert not policy.ai_canary_booleans_allow_real_path(off)
+    on = policy.AICanaryGateConfig(canary_enabled=True, real_provider_enabled=True)
+    assert policy.ai_canary_booleans_allow_real_path(on)

@@ -68,6 +68,33 @@ class InternalAIPolicyBundle(BaseModel):
     per_org: InternalOrgAICapPolicy = Field(default_factory=InternalOrgAICapPolicy)
 
 
+class AICanaryGateConfig(BaseModel):
+    """Ops-only canary caps for real provider paths (engineering controls; not customer credits).
+
+    **Mode matrix** (see ``docs/phase7-openai-canary.md``):
+
+    - ``mock`` — default; no real HTTP; ignores these booleans for routing.
+    - ``canary`` — real adapter may run **only** when ``AI_CANARY_ENABLED`` and
+      ``AI_ENABLE_REAL_PROVIDER`` are truthy, ``OPENAI_API_KEY`` is non-empty (checked
+      in the worker), and numeric caps parse as valid positive bounds.
+    - ``disabled`` — structured real path is off; worker returns a fail-closed provider.
+
+    Env vars (placeholders in ``.env.example``; never commit secrets):
+
+    - ``AI_CANARY_ENABLED`` — master canary toggle.
+    - ``AI_ENABLE_REAL_PROVIDER`` — kill-switch; must be true for any real SDK path.
+    - ``AI_CANARY_MAX_CALLS`` — hard cap hint for orchestration (must be >= 1 when canary on).
+    - ``AI_CANARY_MAX_COST`` — internal cost ceiling for canary (>= 0).
+    - ``AI_CANARY_TIMEOUT_SECONDS`` — per-call timeout bound (> 0).
+    """
+
+    canary_enabled: bool = False
+    real_provider_enabled: bool = False
+    max_calls: int = Field(default=0, ge=0)
+    max_cost: float = Field(default=0.0, ge=0.0)
+    timeout_seconds: int = Field(default=0, ge=0)
+
+
 def ai_run_blob_key_prefix(*segments: str) -> str:
     """Return a normalized slash key prefix for AI run blobs (no secrets)."""
 
@@ -101,6 +128,49 @@ def load_internal_ai_policy_bundle_from_env() -> InternalAIPolicyBundle:
         window_seconds=_i("FF_INTERNAL_AI_ORG_WINDOW_SECONDS", 86_400),
     )
     return InternalAIPolicyBundle(per_job=per_job, per_org=per_org)
+
+
+def _truthy_env(name: str) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def load_ai_canary_gate_config_from_env() -> AICanaryGateConfig:
+    """Parse canary / kill-switch env. Missing numerics default to zero (fail-closed for canary)."""
+
+    def _i(name: str, default: int = 0) -> int:
+        raw = os.getenv(name)
+        if raw is None or raw.strip() == "":
+            return default
+        return int(raw)
+
+    def _f(name: str, default: float = 0.0) -> float:
+        raw = os.getenv(name)
+        if raw is None or raw.strip() == "":
+            return default
+        return float(raw)
+
+    return AICanaryGateConfig(
+        canary_enabled=_truthy_env("AI_CANARY_ENABLED"),
+        real_provider_enabled=_truthy_env("AI_ENABLE_REAL_PROVIDER"),
+        max_calls=_i("AI_CANARY_MAX_CALLS", 0),
+        max_cost=_f("AI_CANARY_MAX_COST", 0.0),
+        timeout_seconds=_i("AI_CANARY_TIMEOUT_SECONDS", 0),
+    )
+
+
+def ai_canary_numeric_gates_satisfied(cfg: AICanaryGateConfig) -> bool:
+    """Structured canary requires explicit positive bounds (zero defaults = closed)."""
+
+    return cfg.max_calls >= 1 and cfg.max_cost > 0.0 and cfg.timeout_seconds >= 1
+
+
+def ai_canary_booleans_allow_real_path(cfg: AICanaryGateConfig) -> bool:
+    """Both the canary lane and the real-provider kill-switch must be on."""
+
+    return cfg.canary_enabled and cfg.real_provider_enabled
 
 
 def job_internal_spend_within_cap(
