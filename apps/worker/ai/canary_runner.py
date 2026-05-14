@@ -1,7 +1,8 @@
 """Tiny staging-only OpenAI canary runner — **synthetic fixture input only**.
 
 Requires ``FF_OPENAI_CANARY_RUNNER_ENABLED=true`` **plus** full structured OpenAI canary
-gates (see ``docs/phase7-openai-canary.md``). Independent of ``FF_WORKER_AI_ENRICHMENT_ENABLED``.
+gates (see ``docs/phase7-openai-canary.md``). Uses ``p7-canary-v1`` JSON Schema for live
+HTTP. Independent of ``FF_WORKER_AI_ENRICHMENT_ENABLED``.
 
 Manual preflight (no HTTP, Gate A): ``python -m ai.canary_runner --fixture tiny_transcript --dry-run``
 from ``apps/worker`` with ``PYTHONPATH=../api:.`` (see docs).
@@ -27,7 +28,12 @@ from ai.openai_canary_gates import check_openai_responses_http_gates_or_raise
 from ai.provider import AIProvider
 from ai.provider_mode import ProviderDisabledError
 from ai.registry import get_structured_ai_provider
-from ai.schemas.output_contracts import FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION
+from ai.schemas.output_contracts import (
+    FACTSHEET_SCHEMA_NAME,
+    FACTSHEET_SCHEMA_VERSION,
+    P7_CANARY_LIVE_SCHEMA_NAME,
+    P7_CANARY_LIVE_SCHEMA_VERSION,
+)
 from ai.transcript_context import TranscriptChunkInput
 from ai.types import AICompletionRequest
 from app.models import AIRun, AIStageLog, Job, utcnow
@@ -151,7 +157,11 @@ def run_openai_canary_fixture_pipeline(
     *,
     fixture_path: Path | None = None,
 ) -> None:
-    """One factsheet structured call on **fixture** text only; persists AIRun / AIStageLog."""
+    """One structured call on **fixture** text only; persists AIRun / AIStageLog.
+
+    Uses ``p7-canary-v1`` JSON Schema for OpenAI ``strict`` mode; output is validated
+    against the production ``FactsheetPayload`` contract.
+    """
 
     path = fixture_path or FIXTURE_PATH
     text = _load_fixture_plain_text(path)
@@ -192,8 +202,8 @@ def run_openai_canary_fixture_pipeline(
     t0 = utcnow()
     req = AICompletionRequest(
         stage_name=CANARY_STAGE,
-        schema_name=FACTSHEET_SCHEMA_NAME,
-        schema_version=FACTSHEET_SCHEMA_VERSION,
+        schema_name=P7_CANARY_LIVE_SCHEMA_NAME,
+        schema_version=P7_CANARY_LIVE_SCHEMA_VERSION,
         prompt_version="p7-openai-canary-runner-1",
         model=model,
         input_bundle=bundle,
@@ -303,7 +313,7 @@ def run_openai_canary_fixture_pipeline(
 
 
 def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
-    """If runner + OpenAI canary gates pass, run one factsheet call on **fixture** text only."""
+    """If runner + OpenAI canary gates pass, run one structured call on **fixture** text only."""
 
     if not openai_canary_runner_enabled():
         return

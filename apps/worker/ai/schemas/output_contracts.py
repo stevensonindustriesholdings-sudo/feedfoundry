@@ -8,6 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 FACTSHEET_SCHEMA_NAME: Final[str] = "feedfoundry.outputs.factsheet"
 FACTSHEET_SCHEMA_VERSION: Final[str] = "1.0.0"
 
+# Strict OpenAI Responses ``json_schema`` requires every property in ``required``.
+# Live canary uses this minimal contract; validation still runs against ``FactsheetPayload``.
+P7_CANARY_LIVE_SCHEMA_NAME: Final[str] = "p7-canary-v1"
+P7_CANARY_LIVE_SCHEMA_VERSION: Final[str] = "1.0.0"
+
 
 class FactsheetPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -15,6 +20,16 @@ class FactsheetPayload(BaseModel):
     title: str
     summary: str
     key_facts: list[str] = Field(default_factory=list)
+
+
+class P7CanaryFactsheetLivePayload(BaseModel):
+    """Live OpenAI canary only: all fields required for ``strict`` JSON Schema."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    summary: str
+    key_facts: list[str]
 
 
 FAQ_SCHEMA_NAME: Final[str] = "feedfoundry.outputs.faq"
@@ -265,6 +280,7 @@ class OutputQualityReportPayload(BaseModel):
 
 SCHEMA_REGISTRY: dict[tuple[str, str], Type[BaseModel]] = {
     (FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION): FactsheetPayload,
+    (P7_CANARY_LIVE_SCHEMA_NAME, P7_CANARY_LIVE_SCHEMA_VERSION): P7CanaryFactsheetLivePayload,
     (FAQ_SCHEMA_NAME, FAQ_SCHEMA_VERSION): FAQPayload,
     (CHAPTERS_SCHEMA_NAME, CHAPTERS_SCHEMA_VERSION): ChaptersPayload,
     (METADATA_SCHEMA_NAME, METADATA_SCHEMA_VERSION): MetadataPayload,

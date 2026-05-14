@@ -170,7 +170,33 @@ def _usage_tokens(data: dict[str, Any]) -> tuple[int, int]:
         return 0, 0
 
 
-def _map_status_to_exc(status_code: int) -> OpenAIHTTPAdapterError:
+def _redacted_openai_error_summary(resp: httpx.Response) -> str | None:
+    """Parse error JSON for logs/exceptions — no raw prompts, no full bodies."""
+
+    try:
+        obj = resp.json()
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    err = obj.get("error")
+    if not isinstance(err, dict):
+        return None
+    parts: list[str] = []
+    for k in ("type", "code", "param"):
+        v = err.get(k)
+        if v is not None:
+            parts.append(f"{k}={str(v)[:120]}")
+    msg = err.get("message")
+    if msg is not None:
+        parts.append(f"message={str(msg)[:240]}")
+    rid = obj.get("id")
+    if rid is not None:
+        parts.append(f"response_id={str(rid)[:48]}")
+    return "; ".join(parts) if parts else None
+
+
+def _map_status_to_exc(status_code: int, *, resp: httpx.Response | None = None) -> OpenAIHTTPAdapterError:
     if status_code in (401, 403):
         return OpenAIHTTPAdapterError(
             f"OpenAI HTTP {status_code}",
@@ -184,8 +210,10 @@ def _map_status_to_exc(status_code: int) -> OpenAIHTTPAdapterError:
             status_code=status_code,
         )
     if status_code == 400:
+        detail = _redacted_openai_error_summary(resp) if resp is not None else None
+        msg = "OpenAI HTTP 400" + (f" ({detail})" if detail else "")
         return OpenAIHTTPAdapterError(
-            "OpenAI HTTP 400",
+            msg,
             code=CanaryRuntimeCode.HTTP_BAD_REQUEST.value,
             status_code=status_code,
         )
@@ -288,7 +316,7 @@ class OpenAIStructuredProviderShell(AIProvider):
                         raw_response_meta=meta,
                     )
 
-                last_exc = _map_status_to_exc(resp.status_code)
+                last_exc = _map_status_to_exc(resp.status_code, resp=resp)
                 if attempt >= max_retries:
                     break
                 if resp.status_code != 429 and not (500 <= resp.status_code <= 599):

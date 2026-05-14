@@ -13,6 +13,8 @@ from ai.schemas.output_contracts import (
     CHAPTERS_SCHEMA_VERSION,
     FACTSHEET_SCHEMA_NAME,
     FACTSHEET_SCHEMA_VERSION,
+    P7_CANARY_LIVE_SCHEMA_NAME,
+    P7_CANARY_LIVE_SCHEMA_VERSION,
     FAQ_SCHEMA_NAME,
     FAQ_SCHEMA_VERSION,
     METADATA_SCHEMA_NAME,
@@ -44,7 +46,10 @@ def _deterministic_registry_payload(request: AICompletionRequest) -> dict[str, A
     start_ms_raw = ib.get("start_ms")
     start_ms = int(start_ms_raw) if start_ms_raw is not None else chunk_index * 60_000
 
-    if key == (FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION):
+    if key in (
+        (FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION),
+        (P7_CANARY_LIVE_SCHEMA_NAME, P7_CANARY_LIVE_SCHEMA_VERSION),
+    ):
         title = f"Transcript intelligence facts (chunk {chunk_index})"
         if segment_id is not None:
             title = f"{title} seg={segment_id}"

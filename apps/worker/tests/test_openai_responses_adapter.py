@@ -11,7 +11,12 @@ import pytest
 from ai.canary_error_codes import CanaryFailClosedCode, CanaryRuntimeCode
 from ai.openai_adapter import OpenAIHTTPAdapterError, OpenAIStructuredProviderShell
 from ai.provider_mode import ProviderDisabledError
-from ai.schemas.output_contracts import FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION
+from ai.schemas.output_contracts import (
+    FACTSHEET_SCHEMA_NAME,
+    FACTSHEET_SCHEMA_VERSION,
+    P7_CANARY_LIVE_SCHEMA_NAME,
+    P7_CANARY_LIVE_SCHEMA_VERSION,
+)
 from ai.types import AICompletionRequest
 
 
@@ -20,6 +25,22 @@ def _factsheet_request() -> AICompletionRequest:
         stage_name="test_stage",
         schema_name=FACTSHEET_SCHEMA_NAME,
         schema_version=FACTSHEET_SCHEMA_VERSION,
+        prompt_version="pv1",
+        model="gpt-4.1-mini",
+        input_bundle={"chunk_index": 0, "transcript_text": "hello", "segment_id": "s1"},
+        max_tokens=128,
+        temperature=0.0,
+        timeout_seconds=30,
+        cost_cap=0.0,
+        trace_id="trace:adapter:test",
+    )
+
+
+def _p7_canary_request() -> AICompletionRequest:
+    return AICompletionRequest(
+        stage_name="test_stage",
+        schema_name=P7_CANARY_LIVE_SCHEMA_NAME,
+        schema_version=P7_CANARY_LIVE_SCHEMA_VERSION,
         prompt_version="pv1",
         model="gpt-4.1-mini",
         input_bundle={"chunk_index": 0, "transcript_text": "hello", "segment_id": "s1"},
@@ -83,7 +104,7 @@ def test_complete_success_parses_usage_and_output(monkeypatch: pytest.MonkeyPatc
     inner.post.return_value = httpx.Response(200, json=api_json)
     with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
         shell = OpenAIStructuredProviderShell()
-        resp = shell.complete(_factsheet_request())
+        resp = shell.complete(_p7_canary_request())
     assert resp.parsed_json == body
     assert resp.provider_request_id == "resp_fixture_1"
     assert resp.input_tokens == 9
@@ -95,7 +116,32 @@ def test_complete_success_parses_usage_and_output(monkeypatch: pytest.MonkeyPatc
     assert kwargs["json"]["model"] == "gpt-4.1-mini"
     assert kwargs["json"]["text"]["format"]["type"] == "json_schema"
     assert kwargs["json"]["text"]["format"]["name"]
-    assert kwargs["json"]["text"]["format"]["schema"].get("title") == "FactsheetPayload"
+    assert kwargs["json"]["text"]["format"]["schema"].get("title") == "P7CanaryFactsheetLivePayload"
+
+
+def test_http_400_maps_and_includes_redacted_error(monkeypatch: pytest.MonkeyPatch):
+    _canary_env(monkeypatch)
+    monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
+    inner = MagicMock()
+    inner.post.return_value = httpx.Response(
+        400,
+        json={
+            "id": "resp_err_1",
+            "error": {
+                "type": "invalid_request_error",
+                "code": "invalid_json_schema",
+                "param": "text.format.schema",
+                "message": "Invalid schema: example detail truncated in production.",
+            },
+        },
+    )
+    with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
+        shell = OpenAIStructuredProviderShell()
+        with pytest.raises(OpenAIHTTPAdapterError) as ei:
+            shell.complete(_p7_canary_request())
+    assert ei.value.code == CanaryRuntimeCode.HTTP_BAD_REQUEST.value
+    assert "invalid_request_error" in str(ei.value)
+    assert "invalid_json_schema" in str(ei.value)
 
 
 def test_http_401_maps_to_stable_code(monkeypatch: pytest.MonkeyPatch):
