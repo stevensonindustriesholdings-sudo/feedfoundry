@@ -7,7 +7,7 @@
 ## Sprint report
 
 **Branch name:** `phase7/integration-7c1-ai-skeleton`  
-**Commit hash:** `7b3fac2` (docs); worker commits `46b499a`, `c76eb8c`.
+**Commit hash:** tip `52a9e2d` (`git log -3 --oneline` on this branch).
 
 **Files changed:**
 
