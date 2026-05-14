@@ -109,3 +109,65 @@ def test_ai_provider_allows_openai_structured_path(monkeypatch: pytest.MonkeyPat
 def test_ai_provider_empty_not_openai(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("AI_PROVIDER", raising=False)
     assert not policy.ai_provider_allows_openai_structured_path()
+
+
+def test_structured_openai_canary_policy_allows_http_requires_both_booleans(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "1")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.01")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "1")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "false")
+    assert not policy.structured_openai_canary_policy_allows_http_preconditions()
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_ENABLED", "false")
+    assert not policy.structured_openai_canary_policy_allows_http_preconditions()
+
+
+def test_structured_openai_canary_policy_requires_openai_provider(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "1")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.01")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "1")
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    assert not policy.structured_openai_canary_policy_allows_http_preconditions()
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    assert policy.structured_openai_canary_policy_allows_http_preconditions()
+
+
+def test_structured_openai_canary_policy_decimal_cost_allowed(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "1")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.0001")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "1")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    assert policy.structured_openai_canary_policy_allows_http_preconditions()
+
+
+def test_structured_openai_canary_policy_max_cost_zero_fail_closed(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "1")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "1")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    assert not policy.structured_openai_canary_policy_allows_http_preconditions()
+
+
+def test_structured_openai_canary_policy_timeout_zero_fail_closed(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "1")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.01")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "0")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    assert not policy.structured_openai_canary_policy_allows_http_preconditions()
+
+
+def test_structured_openai_canary_http_preconditions_has_no_ledger_import():
+    import inspect
+
+    src = inspect.getsource(policy.structured_openai_canary_policy_allows_http_preconditions)
+    assert "credit_ledger" not in src

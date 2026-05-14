@@ -183,6 +183,20 @@ def ai_provider_allows_openai_structured_path() -> bool:
     return v == "openai"
 
 
+def structured_openai_canary_policy_allows_http_preconditions() -> bool:
+    """Return True only when API-visible canary policy allows a worker HTTP attempt.
+
+    Excludes ``OPENAI_API_KEY`` and ``FF_OPENAI_CANARY_RUNNER_ENABLED`` (worker-only).
+    """
+
+    cfg = load_ai_canary_gate_config_from_env()
+    return (
+        ai_canary_booleans_allow_real_path(cfg)
+        and ai_canary_numeric_gates_satisfied(cfg)
+        and ai_provider_allows_openai_structured_path()
+    )
+
+
 def job_internal_spend_within_cap(
     *,
     accumulated_internal_units: float,
