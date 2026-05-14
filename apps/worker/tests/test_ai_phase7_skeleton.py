@@ -35,14 +35,32 @@ def test_mock_provider_is_deterministic_for_same_stage():
 
 def test_registry_returns_mock_by_default(monkeypatch):
     monkeypatch.setenv("AI_ENABLE_MOCK_PROVIDER", "true")
+    monkeypatch.delenv("AI_STRUCTURED_PROVIDER_MODE", raising=False)
     prov = get_structured_ai_provider()
     assert prov.name == "mock"
 
 
-def test_registry_raises_when_mock_disabled_without_real_adapter(monkeypatch):
+def test_registry_legacy_mock_off_returns_disabled_provider(monkeypatch):
     monkeypatch.setenv("AI_ENABLE_MOCK_PROVIDER", "false")
-    with pytest.raises(NotImplementedError):
-        get_structured_ai_provider()
+    monkeypatch.delenv("AI_STRUCTURED_PROVIDER_MODE", raising=False)
+    prov = get_structured_ai_provider()
+    assert prov.name == "disabled"
+    with pytest.raises(RuntimeError, match="Structured AI provider mode is disabled"):
+        prov.complete(
+            AICompletionRequest(
+                stage_name="x",
+                schema_name="ai.stub.v1",
+                schema_version="0.1.0",
+                prompt_version="p",
+                model="mock",
+                input_bundle={},
+                max_tokens=1,
+                temperature=0.0,
+                timeout_seconds=1,
+                cost_cap=0.0,
+                trace_id="t",
+            )
+        )
 
 
 def test_captain_run_plan_roundtrip():

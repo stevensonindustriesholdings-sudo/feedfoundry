@@ -7,7 +7,6 @@ import pytest
 from ai.captain import AICaptain
 from ai.chunking import chunk_transcript_text
 from ai.mock_provider import MockAIProvider, deterministic_stub_bundle
-from ai.registry import get_structured_ai_provider
 from ai.types import AICompletionRequest
 
 
