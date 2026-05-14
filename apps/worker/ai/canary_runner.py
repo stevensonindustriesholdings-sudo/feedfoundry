@@ -14,6 +14,7 @@ from typing import Any
 from sqlmodel import Session
 
 from ai.canary_error_codes import CanaryRuntimeCode
+from ai.openai_adapter import OpenAIHTTPAdapterError
 from ai.modules.output_validator import OutputValidator, ValidationStatus
 from ai.modules.transcript_intelligence import chunks_from_plain_text
 from ai.provider_mode import ProviderDisabledError
@@ -209,6 +210,29 @@ def maybe_run_openai_canary_job_runner(session: Session, job: Job) -> None:
             extra_json={"fixture": FIXTURE_PATH.name},
         )
         _finish("completed")
+    except OpenAIHTTPAdapterError as exc:
+        t1 = utcnow()
+        code = exc.code
+        _append_stage_log(
+            session,
+            ai_run_id=run_id,
+            job_id=job.id,
+            stage_name=CANARY_STAGE,
+            status="failed",
+            provider_name=prov.name,
+            model_name=model,
+            started_at=t0,
+            finished_at=t1,
+            input_tokens=0,
+            output_tokens=0,
+            cost_estimate_internal=None,
+            validation_status=None,
+            error_code=code,
+            error_message=str(exc)[:2048],
+            provider_request_id=None,
+            extra_json={"fixture": FIXTURE_PATH.name, "adapter": "http"},
+        )
+        _finish("failed", error_code=code, error_message=str(exc))
     except RuntimeError as exc:
         t1 = utcnow()
         code = CanaryRuntimeCode.ADAPTER_HTTP_NOT_WIRED.value

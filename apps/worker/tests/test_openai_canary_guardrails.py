@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -45,6 +46,13 @@ def _minimal_request() -> AICompletionRequest:
         cost_cap=0.01,
         trace_id="job:canary:test",
     )
+
+
+def _mock_client_cm(inner: MagicMock) -> MagicMock:
+    cm = MagicMock()
+    cm.__enter__.return_value = inner
+    cm.__exit__.return_value = None
+    return cm
 
 
 def _canary_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,12 +121,13 @@ def test_canary_ai_provider_not_openai_fail_closed(monkeypatch: pytest.MonkeyPat
         get_structured_ai_provider()
 
 
-def test_canary_all_gates_returns_shell_runtime_on_complete(monkeypatch: pytest.MonkeyPatch):
+def test_canary_all_gates_complete_fail_closed_without_runner(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
     _canary_env(monkeypatch)
+    monkeypatch.delenv("FF_OPENAI_CANARY_RUNNER_ENABLED", raising=False)
     prov = get_structured_ai_provider()
     assert prov.name == "openai"
-    with pytest.raises(RuntimeError, match="shell"):
+    with pytest.raises(ProviderDisabledError, match=CanaryFailClosedCode.CANARY_RUNNER_FLAG_OFF.value):
         prov.complete(_minimal_request())
 
 
@@ -138,10 +147,10 @@ def test_resolve_canary_openai_explicit(monkeypatch: pytest.MonkeyPatch):
     assert resolve_structured_provider_mode() == StructuredProviderMode.CANARY_OPENAI
 
 
-def test_openai_adapter_module_has_no_sdk_imports():
+def test_openai_adapter_module_has_no_openai_sdk_imports():
     root = Path(__file__).resolve().parents[1] / "ai" / "openai_adapter.py"
     text = root.read_text(encoding="utf-8")
-    assert "httpx" not in text
+    assert "import httpx" in text
     assert "import openai" not in text
     assert "from openai" not in text
 
@@ -167,6 +176,21 @@ def test_openai_shell_constructor_fail_closed_without_gates(monkeypatch: pytest.
     from ai.openai_adapter import OpenAIStructuredProviderShell
 
     with pytest.raises(ProviderDisabledError, match=CanaryFailClosedCode.KILL_SWITCH_OFF.value):
+        OpenAIStructuredProviderShell()
+
+
+def test_openai_shell_constructor_requires_canary_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "mock")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_CANARY_ENABLED", "true")
+    monkeypatch.setenv("AI_ENABLE_REAL_PROVIDER", "true")
+    monkeypatch.setenv("AI_CANARY_MAX_CALLS", "2")
+    monkeypatch.setenv("AI_CANARY_MAX_COST", "0.5")
+    monkeypatch.setenv("AI_CANARY_TIMEOUT_SECONDS", "45")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-placeholder")
+    from ai.openai_adapter import OpenAIStructuredProviderShell
+
+    with pytest.raises(ProviderDisabledError, match=CanaryFailClosedCode.STRUCTURED_MODE_NOT_CANARY.value):
         OpenAIStructuredProviderShell()
 
 
@@ -239,25 +263,29 @@ def test_runner_skipped_when_mode_mock(monkeypatch: pytest.MonkeyPatch, sqlite_e
         assert session.exec(select(AIRun).where(AIRun.job_id == job_id)).all() == []
 
 
-def test_runner_persists_failed_stage_when_adapter_shell(monkeypatch: pytest.MonkeyPatch, sqlite_engine):
+def test_runner_persists_failed_stage_on_http_auth(monkeypatch: pytest.MonkeyPatch, sqlite_engine):
     monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
     monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
     _canary_env(monkeypatch)
     org_id, job_id, ma_id = "org_cr_shell", "job_cr_shell", "ma_cr_shell"
+    inner = MagicMock()
+    inner.post.return_value = httpx.Response(401, json={"error": {"message": "bad"}})
     with Session(sqlite_engine) as session:
         job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
-        maybe_run_openai_canary_job_runner(session, job)
+        with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
+            maybe_run_openai_canary_job_runner(session, job)
         runs = session.exec(select(AIRun).where(AIRun.job_id == job_id)).all()
         assert len(runs) == 1
         assert runs[0].status == "failed"
-        assert runs[0].error_code == CanaryRuntimeCode.ADAPTER_HTTP_NOT_WIRED.value
+        assert runs[0].error_code == CanaryRuntimeCode.HTTP_AUTH.value
         stages = session.exec(select(AIStageLog).where(AIStageLog.ai_run_id == runs[0].id)).all()
         assert len(stages) == 1
         assert stages[0].stage_name == "openai_canary_synthetic"
-        assert stages[0].error_code == CanaryRuntimeCode.ADAPTER_HTTP_NOT_WIRED.value
+        assert stages[0].error_code == CanaryRuntimeCode.HTTP_AUTH.value
         extra = stages[0].extra_json or {}
         assert "sk-" not in str(extra)
         assert "OPENAI" not in str(extra)
+        inner.post.assert_called_once()
 
 
 def test_runner_success_path_patched_complete(monkeypatch: pytest.MonkeyPatch, sqlite_engine):
@@ -302,17 +330,20 @@ def test_runner_no_ledger_side_effects(monkeypatch: pytest.MonkeyPatch, sqlite_e
     monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
     _canary_env(monkeypatch)
     org_id, job_id, ma_id = "org_cr_led", "job_cr_led", "ma_cr_led"
+    inner = MagicMock()
+    inner.post.return_value = httpx.Response(401, json={})
     with Session(sqlite_engine) as session:
         job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
-        with patch("app.services.credit_ledger.debit_reserved_processing_minutes") as m_debit, patch(
-            "app.services.credit_ledger.reserve_processing_minutes"
-        ) as m_res, patch(
-            "app.services.credit_ledger.release_reserved_processing_minutes"
-        ) as m_rel:
-            maybe_run_openai_canary_job_runner(session, job)
-            m_debit.assert_not_called()
-            m_res.assert_not_called()
-            m_rel.assert_not_called()
+        with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
+            with patch("app.services.credit_ledger.debit_reserved_processing_minutes") as m_debit, patch(
+                "app.services.credit_ledger.reserve_processing_minutes"
+            ) as m_res, patch(
+                "app.services.credit_ledger.release_reserved_processing_minutes"
+            ) as m_rel:
+                maybe_run_openai_canary_job_runner(session, job)
+                m_debit.assert_not_called()
+                m_res.assert_not_called()
+                m_rel.assert_not_called()
 
 
 def test_openai_canary_runner_enabled_helper(monkeypatch: pytest.MonkeyPatch):
@@ -322,13 +353,15 @@ def test_openai_canary_runner_enabled_helper(monkeypatch: pytest.MonkeyPatch):
     assert openai_canary_runner_enabled()
 
 
-def test_runner_does_not_post_httpx(monkeypatch: pytest.MonkeyPatch, sqlite_engine):
+def test_runner_calls_bounded_http_once_with_mocked_transport(monkeypatch: pytest.MonkeyPatch, sqlite_engine):
     monkeypatch.setenv("FF_OPENAI_CANARY_RUNNER_ENABLED", "true")
     monkeypatch.setenv("AI_STRUCTURED_PROVIDER_MODE", "canary_openai")
     _canary_env(monkeypatch)
     org_id, job_id, ma_id = "org_cr_http", "job_cr_http", "ma_cr_http"
+    inner = MagicMock()
+    inner.post.return_value = httpx.Response(401, json={})
     with Session(sqlite_engine) as session:
         job = _seed_job(session, org_id=org_id, job_id=job_id, ma_id=ma_id)
-        with patch("httpx.Client.post") as m_post:
+        with patch("ai.openai_adapter.httpx.Client", return_value=_mock_client_cm(inner)):
             maybe_run_openai_canary_job_runner(session, job)
-            m_post.assert_not_called()
+        inner.post.assert_called_once()

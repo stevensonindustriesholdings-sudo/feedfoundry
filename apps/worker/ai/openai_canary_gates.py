@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from ai.canary_error_codes import CanaryFailClosedCode
-from ai.provider_mode import ProviderDisabledError
+from ai.provider_mode import ProviderDisabledError, StructuredProviderMode, resolve_structured_provider_mode
 from app.services.ai_internal_policy import (
     ai_canary_booleans_allow_real_path,
     ai_canary_numeric_gates_satisfied,
@@ -19,8 +19,20 @@ def _openai_key_present() -> bool:
     return bool(key and key.strip())
 
 
+def _truthy_env(val: str | None) -> bool:
+    if val is None:
+        return False
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def openai_canary_runner_env_enabled() -> bool:
+    """Mirror ``FF_OPENAI_CANARY_RUNNER_ENABLED`` without importing ``canary_runner`` (import cycle)."""
+
+    return _truthy_env(os.environ.get("FF_OPENAI_CANARY_RUNNER_ENABLED"))
+
+
 def check_openai_structured_canary_gates_or_raise() -> None:
-    """Validate env/policy for ``OpenAIStructuredProviderShell``; raise :class:`ProviderDisabledError` if blocked."""
+    """Validate env/policy for structured OpenAI canary booleans, numerics, provider, key."""
 
     cfg = load_ai_canary_gate_config_from_env()
     if not ai_canary_booleans_allow_real_path(cfg):
@@ -42,4 +54,26 @@ def check_openai_structured_canary_gates_or_raise() -> None:
         raise ProviderDisabledError(
             f"[{CanaryFailClosedCode.OPENAI_API_KEY_MISSING.value}] Structured OpenAI canary requires "
             "a non-empty OPENAI_API_KEY in the worker environment."
+        )
+
+
+def check_openai_structured_adapter_construct_gates_or_raise() -> None:
+    """Gates for instantiating :class:`ai.openai_adapter.OpenAIStructuredProviderShell` (no HTTP yet)."""
+
+    check_openai_structured_canary_gates_or_raise()
+    if resolve_structured_provider_mode() != StructuredProviderMode.CANARY_OPENAI:
+        raise ProviderDisabledError(
+            f"[{CanaryFailClosedCode.STRUCTURED_MODE_NOT_CANARY.value}] Structured OpenAI canary requires "
+            "AI_STRUCTURED_PROVIDER_MODE=canary_openai (legacy alias: canary)."
+        )
+
+
+def check_openai_responses_http_gates_or_raise() -> None:
+    """All gates required before a live ``POST .../v1/responses`` (staging canary runner path)."""
+
+    check_openai_structured_adapter_construct_gates_or_raise()
+    if not openai_canary_runner_env_enabled():
+        raise ProviderDisabledError(
+            f"[{CanaryFailClosedCode.CANARY_RUNNER_FLAG_OFF.value}] Structured OpenAI HTTP requires "
+            "FF_OPENAI_CANARY_RUNNER_ENABLED=true."
         )
