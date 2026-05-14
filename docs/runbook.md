@@ -10,7 +10,7 @@ FeedFoundry is a **creator archive intelligence engine**. Creators **upload** th
 
 **V1 constraint:** there is **no URL ingestion**. Every job starts from an uploaded object in your bucket, not from an arbitrary external link.
 
-**Current `/v1` surface (integrators):** `GET /v1/account`, `GET /v1/account/usage`, `GET /v1/account/credits` (deprecated compatibility alias only), `GET /v1/catalog/outputs`, `POST /v1/uploads/presign`, `POST /v1/uploads/complete`, `POST /v1/jobs`, `GET /v1/jobs` (query `status`, `limit`, `offset`), `GET /v1/jobs/{job_id}`, `POST /v1/jobs/{job_id}/cancel`, `GET /v1/jobs/{job_id}/outputs`, `GET /v1/jobs/{job_id}/outputs/catalog`, plus existing manifest routes under `/v1/manifests/...`. Errors: flat JSON `{"code","message","fields"}`.
+**Current `/v1` surface (integrators):** `GET /v1/account`, `GET /v1/account/usage`, `GET /v1/account/credits` (deprecated compatibility alias only), `GET /v1/catalog/outputs`, `POST /v1/uploads/presign`, `POST /v1/uploads/complete`, `POST /v1/jobs`, `GET /v1/jobs` (query `status`, `limit`, `offset`), `GET /v1/jobs/{job_id}`, `POST /v1/jobs/{job_id}/cancel`, `GET /v1/jobs/{job_id}/outputs`, `GET /v1/jobs/{job_id}/outputs/catalog`, plus existing manifest routes under `/v1/manifests/...`. **Internal (operator):** `GET /v1/admin/ai-runs`, `GET /v1/admin/ai-runs/{ai_run_id}`, `GET /v1/admin/jobs/{job_id}/ai-runs` (requires `FF_INTERNAL_API_KEY`; see [phase7-ai-run-visibility.md](./phase7-ai-run-visibility.md)). Errors: flat JSON `{"code","message","fields"}`.
 
 This monorepo is the **engine** (API + worker + schemas + prompts). A separate product layer (e.g. **Base44**) owns polished customer UI, auth, and payment UX; it calls this API with server-side credentials.
 
@@ -248,6 +248,7 @@ Phase 7 introduces a **structured, schema-first AI execution model** in the **wo
 | [phase7-agent-ownership-map.md](./phase7-agent-ownership-map.md) | **Cursor** parallel agents A–F — not the same thing as FeedFoundry AI modules. |
 | [phase7-product-grid-extension.md](./phase7-product-grid-extension.md) | Optional **product imagery / product grid** context — **preview/extension**, not a launch pivot; no Shopify/Etsy unless explicitly approved. |
 | [phase7-railway-storage-provider-architecture.md](./phase7-railway-storage-provider-architecture.md) | **Railway = MVP host, not lock-in**; API vs worker vs web responsibilities; **S3-compatible storage**; env placeholders. |
+| [phase7-ai-run-visibility.md](./phase7-ai-run-visibility.md) | Read-only **`AIRun` / `AIStageLog`** HTTP visibility (`/v1/admin/ai-runs*`), redaction, System page panel. |
 
 **Runtime rules (Phase 7):**
 
@@ -267,6 +268,7 @@ Phase 7 introduces a **structured, schema-first AI execution model** in the **wo
 | [tech-spec.md](./tech-spec.md) | Component map and job states |
 | [MVP_PARALLEL_CONTRACT.md](./MVP_PARALLEL_CONTRACT.md) | Multi-agent lane contract |
 | [AGENTS.md](../AGENTS.md) | Repo-wide agent rules |
+| [phase7-ai-run-visibility.md](./phase7-ai-run-visibility.md) | Internal admin AI run readout (no prompts / no `extra_json` in API DTOs) |
 
 ---
 
