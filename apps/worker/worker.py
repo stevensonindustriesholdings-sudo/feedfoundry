@@ -46,6 +46,7 @@ from app.services.storage import (  # noqa: E402
 )
 from app.settings import get_settings  # noqa: E402
 
+from ai.canary_runner import maybe_run_openai_canary_job_runner  # noqa: E402
 from ai.pipeline import maybe_run_mock_ai_job_enrichment  # noqa: E402
 from media_inspection import inspect_media_file  # noqa: E402
 from pipeline.audio_extraction import run_audio_extraction  # noqa: E402
@@ -532,6 +533,8 @@ def process_job(session: Session, job: Job) -> None:
         transcript_payload=transcript_payload,
         media_inspection_payload=media_inspection_payload,
     )
+
+    maybe_run_openai_canary_job_runner(session, job)
 
     _settle_processing_allowance(session, job)
 

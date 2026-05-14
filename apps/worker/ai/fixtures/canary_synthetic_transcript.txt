@@ -1,0 +1,2 @@
+Welcome to the FeedFoundry internal canary fixture. This line exists only for staging validation.
+We keep vocabulary bounded and avoid secrets or customer URLs in this file.
