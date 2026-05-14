@@ -1,6 +1,6 @@
 """OpenAI structured provider adapter — **canary shell only** (no HTTP in this slice).
 
-No ``openai`` / ``httpx`` imports at module load. :meth:`OpenAIStructuredProviderShell.complete`
+No third-party SDK imports at module load. :meth:`OpenAIStructuredProviderShell.complete`
 raises until a later sprint wires a bounded client (lazy SDK import will live there).
 """
 
