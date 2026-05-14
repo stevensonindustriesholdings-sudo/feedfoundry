@@ -237,6 +237,26 @@ Canonical short glossary: [glossary.md](./glossary.md). Common acronyms:
 
 ---
 
+## 17. Phase 7 — AI Worker Intelligence Layer (planning + build contract)
+
+Phase 7 introduces a **structured, schema-first AI execution model** in the **worker** (orchestrator + modules + validation), separate from today’s YAML-driven `apps/worker/providers/*` text completions. See:
+
+| Document | Purpose |
+|----------|---------|
+| [ai-operating-brief.md](./ai-operating-brief.md) | Logical modules (Captain, Producer, Visual Analyst, **Product Signal Extractor**, Verifier, Governor, Repository Beacon, cost/router, validator, support logger). |
+| [phase7-implementation-checklist.md](./phase7-implementation-checklist.md) | Gates, merge order, accounting open questions. |
+| [phase7-agent-ownership-map.md](./phase7-agent-ownership-map.md) | **Cursor** parallel agents A–F — not the same thing as FeedFoundry AI modules. |
+| [phase7-product-grid-extension.md](./phase7-product-grid-extension.md) | Optional **product imagery / product grid** context — **preview/extension**, not a launch pivot; no Shopify/Etsy unless explicitly approved. |
+| [phase7-railway-storage-provider-architecture.md](./phase7-railway-storage-provider-architecture.md) | **Railway = MVP host, not lock-in**; API vs worker vs web responsibilities; **S3-compatible storage**; env placeholders. |
+
+**Runtime rules (Phase 7):**
+
+- **Mock-provider-first:** CI and default dev paths for the new `apps/worker/ai/*` plumbing must **not** require network or real `OPENAI_API_KEY`; use `AI_ENABLE_MOCK_PROVIDER` (see [.env.example](../.env.example)).
+- **No browser AI keys:** Next.js may only proxy; all provider secrets live on **Railway worker** (and API for non-AI secrets). Web env: [apps/web/.env.example](../apps/web/.env.example).
+- **No Railway mutations** from automation without explicit ops approval; this runbook documents only.
+
+---
+
 ## Related documents
 
 | Document | Purpose |
