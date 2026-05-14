@@ -1,13 +1,34 @@
 import { forwardToFeedFoundry } from "@/lib/server/feedfoundry-upstream";
+import { getServerConfig } from "@/lib/server/config";
 import { OrgSwitcher } from "@/components/OrgSwitcher";
 
 export const dynamic = "force-dynamic";
 
-export default async function SystemPage() {
+function parseFlatApiError(status: number, text: string): string {
+  try {
+    const j = JSON.parse(text) as { code?: string; message?: string };
+    if (j && typeof j.code === "string") {
+      return `${j.code}: ${j.message ?? ""}`.trim();
+    }
+  } catch {
+    /* ignore */
+  }
+  return `HTTP ${status}: ${text.slice(0, 200)}`;
+}
+
+type SystemSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function SystemPage(props: { searchParams?: SystemSearchParams }) {
   let healthJson: unknown = null;
   let readyJson: unknown = null;
   let healthErr: string | null = null;
   let readyErr: string | null = null;
+  let aiRunsJson: unknown = null;
+  let aiRunsErr: string | null = null;
+
+  const sp = (await props.searchParams) ?? {};
+  const jobFilterRaw = sp.job;
+  const jobFilter = typeof jobFilterRaw === "string" && jobFilterRaw.trim() ? jobFilterRaw.trim() : undefined;
 
   try {
     const h = await forwardToFeedFoundry("/health");
@@ -24,6 +45,21 @@ export default async function SystemPage() {
     else readyJson = JSON.parse(t);
   } catch (e) {
     readyErr = (e as Error).message;
+  }
+
+  try {
+    const { defaultOrgId } = getServerConfig();
+    const params = new URLSearchParams({
+      organisation_id: defaultOrgId,
+      limit: "20",
+    });
+    if (jobFilter) params.set("job_id", jobFilter);
+    const ar = await forwardToFeedFoundry(`/v1/admin/ai-runs?${params.toString()}`);
+    const at = await ar.text();
+    if (!ar.ok) aiRunsErr = parseFlatApiError(ar.status, at);
+    else aiRunsJson = JSON.parse(at);
+  } catch (e) {
+    aiRunsErr = (e as Error).message;
   }
 
   const base = process.env.NEXT_PUBLIC_FEEDFOUNDRY_API_BASE_URL || "";
@@ -52,6 +88,29 @@ export default async function SystemPage() {
             {readyErr ?? JSON.stringify(readyJson, null, 2)}
           </pre>
         </article>
+      </section>
+
+      <section className="rounded-xl border border-surface-border bg-surface-raised/40 p-4 text-sm">
+        <h2 className="font-semibold text-zinc-300">AI run status (internal)</h2>
+        <p className="mt-2 max-w-3xl text-xs text-zinc-500">
+          Read-only operational readout from <code className="rounded bg-black/30 px-1">GET /v1/admin/ai-runs</code> for
+          the default org. Stages show validation status and mock provider names when persisted — not customer billing
+          fields. OpenAI canary stays disabled unless you explicitly enable it on the worker host (
+          <code className="rounded bg-black/30 px-1">AI_STRUCTURED_PROVIDER_MODE</code>); local dev normally uses the
+          mock provider.
+        </p>
+        <p className="mt-2 text-xs text-zinc-500">
+          Optional filter: append <code className="rounded bg-black/30 px-1">?job=&lt;job_id&gt;</code> to this page URL
+          to scope the list.
+        </p>
+        <pre className="mt-3 max-h-80 overflow-auto rounded bg-black/40 p-2 text-xs text-zinc-300">
+          {aiRunsErr ?? JSON.stringify(aiRunsJson, null, 2)}
+        </pre>
+        {aiRunsErr?.includes("404") || aiRunsErr?.includes("not_found") ? (
+          <p className="mt-2 text-xs text-zinc-600">
+            If the route is missing, deploy an API that includes admin AI run routes, then reload.
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-xl border border-surface-border bg-surface-raised/40 p-4 text-sm">
