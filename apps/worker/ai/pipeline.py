@@ -1,8 +1,10 @@
 """Optional mock-only AI enrichment in the worker job path (Phase 7C).
 
-Gated by ``FF_WORKER_MOCK_AI_ENRICHMENT`` (default **off**). Uses :class:`ai.mock_provider.MockAIProvider`
-only — no real provider SDKs or HTTP. Persists :class:`app.models.AIRun` / :class:`app.models.AIStageLog`
-via the same SQLModel ``Session`` as the job; does not touch credit ledger or processing-minute settlement.
+Gated by ``FF_WORKER_AI_ENRICHMENT_ENABLED`` (default **off**). Uses
+:class:`ai.mock_provider.MockAIProvider` only — no real provider SDKs or HTTP.
+Persists :class:`app.models.AIRun` / :class:`app.models.AIStageLog` via the same
+SQLModel ``Session`` as the job; does not touch credit ledger or processing-minute
+settlement.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from typing import Any
 from sqlmodel import Session
 
 from ai.mock_provider import MockAIProvider
+from ai.modules.output_validator import ValidationStatus
 from ai.modules.product_signal import STAGE_NAME as PRODUCT_STAGE
 from ai.modules.product_signal import ProductSignalValidationError, run_product_signal
 from ai.modules.transcript_intelligence import STAGE_NAME as TRANSCRIPT_STAGE
@@ -24,18 +27,17 @@ from ai.modules.transcript_intelligence import (
 )
 from ai.modules.visual_analysis import STAGE_NAME as VISUAL_STAGE
 from ai.modules.visual_analysis import VisualAnalysisValidationError, run_visual_analysis
-from ai.modules.output_validator import ValidationStatus
 from ai.product_context import ProductGridContext, ProductSignalContext
 from ai.provider import AIProvider
 from ai.transcript_context import TranscriptChunkInput
 from ai.types import AICompletionRequest, AICompletionResponse
-from ai.visual_context import KeyframeRef, ProductImageRef, VisualAnalysisContext
+from ai.visual_context import KeyframeRef, OCRSnippetRef, ProductImageRef, VisualAnalysisContext
 from app.models import AIRun, AIStageLog, Job, JobStatus, utcnow
 
 log = logging.getLogger("feedfoundry.worker.ai.pipeline")
 
 # Default **off** — production behaviour unchanged unless explicitly enabled.
-ENV_MOCK_AI_ENRICHMENT = "FF_WORKER_MOCK_AI_ENRICHMENT"
+ENV_AI_ENRICHMENT = "FF_WORKER_AI_ENRICHMENT_ENABLED"
 
 
 def _truthy_env(val: str | None) -> bool:
@@ -44,8 +46,8 @@ def _truthy_env(val: str | None) -> bool:
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def mock_ai_enrichment_enabled() -> bool:
-    return _truthy_env(os.environ.get(ENV_MOCK_AI_ENRICHMENT))
+def worker_ai_enrichment_enabled() -> bool:
+    return _truthy_env(os.environ.get(ENV_AI_ENRICHMENT))
 
 
 class _AccountingMockProvider(AIProvider):
@@ -89,33 +91,75 @@ def _transcript_plain_text(transcript_payload: dict[str, Any] | None) -> str | N
     return "\n".join(parts)
 
 
-def _keyframes_from_media_inspection(mi: dict[str, Any], *, job_id: str) -> tuple[KeyframeRef, ...]:
+def _parse_keyframes(mi: dict[str, Any]) -> tuple[KeyframeRef, ...]:
     raw = mi.get("keyframes")
     out: list[KeyframeRef] = []
     if isinstance(raw, list):
         for row in raw:
-            if isinstance(row, dict) and row.get("frame_id") is not None:
-                try:
-                    t_ms = int(row.get("t_ms", 0))
-                except (TypeError, ValueError):
-                    t_ms = 0
-                out.append(KeyframeRef(frame_id=str(row["frame_id"]), t_ms=t_ms))
-        if out:
-            return tuple(out)
-    plan = mi.get("chunk_plan")
-    if isinstance(plan, list):
-        for row in plan[:16]:
-            if not isinstance(row, dict):
+            if not isinstance(row, dict) or row.get("frame_id") is None:
                 continue
-            idx = row.get("index", 0)
-            start = row.get("start_sec", 0.0)
             try:
-                start_f = float(start)
+                t_ms = int(row.get("t_ms", 0))
             except (TypeError, ValueError):
-                start_f = 0.0
-            t_ms = max(0, int(start_f * 1000))
-            out.append(KeyframeRef(frame_id=f"chunk-plan-{job_id}-{idx}", t_ms=t_ms))
+                t_ms = 0
+            out.append(KeyframeRef(frame_id=str(row["frame_id"]), t_ms=t_ms))
     return tuple(out)
+
+
+def _parse_ocr_snippets(mi: dict[str, Any]) -> tuple[OCRSnippetRef, ...]:
+    raw = mi.get("ocr_snippets")
+    out: list[OCRSnippetRef] = []
+    if isinstance(raw, list):
+        for row in raw:
+            if not isinstance(row, dict) or row.get("ocr_source_id") is None:
+                continue
+            try:
+                t_ms = int(row.get("t_ms", 0))
+            except (TypeError, ValueError):
+                t_ms = 0
+            text = str(row.get("text") or "")
+            out.append(OCRSnippetRef(ocr_source_id=str(row["ocr_source_id"]), t_ms=t_ms, text=text))
+    return tuple(out)
+
+
+def _parse_product_images_for_visual(mi: dict[str, Any]) -> tuple[ProductImageRef, ...]:
+    raw = mi.get("product_images")
+    out: list[ProductImageRef] = []
+    if isinstance(raw, list):
+        for row in raw:
+            if not isinstance(row, dict) or not row.get("product_image_id"):
+                continue
+            t_raw = row.get("t_ms")
+            try:
+                t_ms = int(t_raw) if t_raw is not None else None
+            except (TypeError, ValueError):
+                t_ms = None
+            out.append(
+                ProductImageRef(
+                    product_image_id=str(row["product_image_id"]),
+                    t_ms=t_ms,
+                    grid_cell_index=row.get("grid_cell_index"),
+                )
+            )
+    return tuple(out)
+
+
+def _visual_context_from_inspection(
+    mi: dict[str, Any],
+    *,
+    episode_id: str,
+) -> VisualAnalysisContext | None:
+    """Return a context only when at least one visual input row is present (no chunk_plan synthesis)."""
+    kfs = _parse_keyframes(mi)
+    ocr = _parse_ocr_snippets(mi)
+    pimgs = _parse_product_images_for_visual(mi)
+    if not kfs and not ocr and not pimgs:
+        return None
+    return VisualAnalysisContext(episode_id=episode_id, keyframes=kfs, ocr_snippets=ocr, product_images=pimgs)
+
+
+def _product_images_for_signal(mi: dict[str, Any]) -> tuple[ProductImageRef, ...]:
+    return _parse_product_images_for_visual(mi)
 
 
 def _append_stage_log(
@@ -167,8 +211,19 @@ def maybe_run_mock_ai_job_enrichment(
     transcript_payload: dict[str, Any] | None,
     media_inspection_payload: dict[str, Any] | None,
 ) -> None:
-    """If ``FF_WORKER_MOCK_AI_ENRICHMENT`` is on, run mock stages and persist logs (best-effort)."""
-    if not mock_ai_enrichment_enabled():
+    """If ``FF_WORKER_AI_ENRICHMENT_ENABLED`` is on, run mock stages and persist logs (best-effort)."""
+    if not worker_ai_enrichment_enabled():
+        return
+
+    text = _transcript_plain_text(transcript_payload)
+    vctx = (
+        _visual_context_from_inspection(media_inspection_payload, episode_id=job.id)
+        if media_inspection_payload
+        else None
+    )
+    pimgs = _product_images_for_signal(media_inspection_payload) if media_inspection_payload else ()
+
+    if not text and vctx is None and not pimgs:
         return
 
     prov = _AccountingMockProvider()
@@ -202,7 +257,6 @@ def maybe_run_mock_ai_job_enrichment(
         return
 
     # --- transcript_intelligence ---
-    text = _transcript_plain_text(transcript_payload)
     if not text:
         _append_stage_log(
             session,
@@ -299,13 +353,31 @@ def maybe_run_mock_ai_job_enrichment(
             provider_request_id=None,
             extra_json=None,
         )
+    elif vctx is None:
+        _append_stage_log(
+            session,
+            ai_run_id=run_id,
+            job_id=job.id,
+            stage_name=VISUAL_STAGE,
+            status="skipped",
+            provider_name=None,
+            model_name=None,
+            started_at=None,
+            finished_at=None,
+            input_tokens=0,
+            output_tokens=0,
+            cost_estimate_internal=None,
+            validation_status=None,
+            error_code=None,
+            error_message="no_visual_inputs",
+            provider_request_id=None,
+            extra_json={"reason": "no_keyframes_ocr_or_product_images"},
+        )
     else:
         if _job_is_cancelled(session, job.id):
             _finish_run("cancelled", error_code="cancelled", error_message="Cancelled before visual_analysis.")
             return
         t0 = utcnow()
-        kfs = _keyframes_from_media_inspection(media_inspection_payload, job_id=job.id)
-        vctx = VisualAnalysisContext(episode_id=job.id, keyframes=kfs)
         prov_v = _AccountingMockProvider()
         try:
             vres, _parsed = run_visual_analysis(vctx, job_id=job.id, provider=prov_v)
@@ -327,7 +399,7 @@ def maybe_run_mock_ai_job_enrichment(
                 error_code=None,
                 error_message=None,
                 provider_request_id=prov_v.last_request_id,
-                extra_json={"keyframes": len(kfs)},
+                extra_json={"keyframes": len(vctx.keyframes), "ocr": len(vctx.ocr_snippets)},
             )
         except VisualAnalysisValidationError as exc:
             t1 = utcnow()
@@ -377,32 +449,31 @@ def maybe_run_mock_ai_job_enrichment(
             provider_request_id=None,
             extra_json=None,
         )
+    elif not pimgs:
+        _append_stage_log(
+            session,
+            ai_run_id=run_id,
+            job_id=job.id,
+            stage_name=PRODUCT_STAGE,
+            status="skipped",
+            provider_name=None,
+            model_name=None,
+            started_at=None,
+            finished_at=None,
+            input_tokens=0,
+            output_tokens=0,
+            cost_estimate_internal=None,
+            validation_status=None,
+            error_code=None,
+            error_message="no_product_images",
+            provider_request_id=None,
+            extra_json=None,
+        )
     else:
         if _job_is_cancelled(session, job.id):
             _finish_run("cancelled", error_code="cancelled", error_message="Cancelled before product_signal.")
             return
         t0 = utcnow()
-        imgs_raw = media_inspection_payload.get("product_images")
-
-        pimgs: tuple[ProductImageRef, ...] = ()
-        if isinstance(imgs_raw, list):
-            tmp: list[ProductImageRef] = []
-            for row in imgs_raw:
-                if not isinstance(row, dict) or not row.get("product_image_id"):
-                    continue
-                t_raw = row.get("t_ms")
-                try:
-                    t_ms = int(t_raw) if t_raw is not None else None
-                except (TypeError, ValueError):
-                    t_ms = None
-                tmp.append(
-                    ProductImageRef(
-                        product_image_id=str(row["product_image_id"]),
-                        t_ms=t_ms,
-                        grid_cell_index=row.get("grid_cell_index"),
-                    )
-                )
-            pimgs = tuple(tmp)
         grid = ProductGridContext(listing_id=f"job-{job.id}", product_images=pimgs)
         ps_ctx = ProductSignalContext(job_id=job.id, grid=grid, content_anchor_ms=0)
         prov_p = _AccountingMockProvider()
