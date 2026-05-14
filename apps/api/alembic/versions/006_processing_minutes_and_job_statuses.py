@@ -53,6 +53,21 @@ def _pg_jobstatus_has_created_label(bind) -> bool:
     return row is not None
 
 
+def _pg_jobstatus_uses_orm_member_names(bind) -> bool:
+    """SQLAlchemy ``Enum(JobStatus)`` maps PostgreSQL labels to Python members by **Enum.name**."""
+    row = bind.execute(
+        text(
+            """
+            SELECT 1 FROM pg_enum e
+            JOIN pg_type t ON e.enumtypid = t.oid
+            WHERE t.typname = 'jobstatus' AND e.enumlabel = 'UPLOADED'
+            LIMIT 1
+            """
+        )
+    ).fetchone()
+    return row is not None
+
+
 def _jobs_status_column_meta(bind):
     return bind.execute(
         text(
@@ -68,11 +83,11 @@ def _jobs_status_column_meta(bind):
 def _migrate_legacy_railway_jobstatus_enum(bind) -> None:
     """v0.1 Railway bridge: older DBs used a native ``jobstatus`` enum with UPPERCASE pipeline labels.
 
-    SQLModel ``JobStatus`` persists lowercase values (``uploaded``, ``completed``, …) that are not
-    members of that legacy enum, so ``UPDATE … SET status = 'uploaded'`` fails before this repair.
+    SQLAlchemy ``Enum(JobStatus)`` expects PostgreSQL enum **labels** to match Python ``Enum.name``
+    (``UPLOADED``, ``COMPLETED``, …), not the ``str`` values (``uploaded``, ``completed``).
 
     Repair: cast through VARCHAR with ``lower(status::text)``, drop the wide enum, recreate a
-    6-label enum matching ``app.models.JobStatus``, map legacy literals (including ``complete`` /
+    6-label enum with ORM-compatible labels, map legacy literals (including ``complete`` /
     ``COMPLETE``), then cast the column back to ``jobstatus``. Idempotent for re-runs and partial
     failures (orphaned ``jobstatus`` type, VARCHAR column left unattached, etc.).
     """
@@ -86,10 +101,63 @@ def _migrate_legacy_railway_jobstatus_enum(bind) -> None:
     data_type, udt_name = meta[0], meta[1]
     enum_n = _pg_jobstatus_enum_label_count(bind)
 
-    # Already on the slim enum used by current models.
-    if data_type == "USER-DEFINED" and udt_name == "jobstatus":
-        if enum_n == 6 and not _pg_jobstatus_has_created_label(bind):
-            return
+    # Slim ORM-compatible enum (six labels, member names, no legacy pipeline members).
+    if (
+        data_type == "USER-DEFINED"
+        and udt_name == "jobstatus"
+        and enum_n == 6
+        and not _pg_jobstatus_has_created_label(bind)
+        and _pg_jobstatus_uses_orm_member_names(bind)
+    ):
+        return
+
+    # Earlier 006 builds used ``str`` *values* as PG labels (``uploaded``). SQLAlchemy expects
+    # ``Enum.name`` labels (``UPLOADED``). Repair in-place for that mistaken slim enum.
+    wrong_slim_value_labels = (
+        data_type == "USER-DEFINED"
+        and udt_name == "jobstatus"
+        and enum_n == 6
+        and not _pg_jobstatus_has_created_label(bind)
+        and not _pg_jobstatus_uses_orm_member_names(bind)
+    )
+    if wrong_slim_value_labels:
+        op.execute(
+            text(
+                "ALTER TABLE jobs ALTER COLUMN status TYPE VARCHAR(64) USING (status::text)"
+            )
+        )
+        if _pg_jobstatus_enum_label_count(bind) > 0:
+            op.execute(text("DROP TYPE jobstatus"))
+        op.execute(
+            text(
+                "CREATE TYPE jobstatus AS ENUM ("
+                "'UPLOADED', 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED')"
+            )
+        )
+        op.execute(
+            text(
+                """
+                UPDATE jobs SET status = CASE status
+                  WHEN 'uploaded' THEN 'UPLOADED'
+                  WHEN 'queued' THEN 'QUEUED'
+                  WHEN 'processing' THEN 'PROCESSING'
+                  WHEN 'completed' THEN 'COMPLETED'
+                  WHEN 'failed' THEN 'FAILED'
+                  WHEN 'cancelled' THEN 'CANCELLED'
+                  ELSE 'PROCESSING'
+                END
+                WHERE status IN (
+                  'uploaded','queued','processing','completed','failed','cancelled'
+                )
+                """
+            )
+        )
+        op.execute(
+            text(
+                "ALTER TABLE jobs ALTER COLUMN status TYPE jobstatus USING (status::jobstatus)"
+            )
+        )
+        return
 
     wide_or_legacy = enum_n > 6 or _pg_jobstatus_has_created_label(bind)
 
@@ -106,28 +174,28 @@ def _migrate_legacy_railway_jobstatus_enum(bind) -> None:
         op.execute(
             text(
                 "CREATE TYPE jobstatus AS ENUM ("
-                "'uploaded', 'queued', 'processing', 'completed', 'failed', 'cancelled')"
+                "'UPLOADED', 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED')"
             )
         )
         op.execute(
             text(
                 """
                 UPDATE jobs SET status = CASE status
-                  WHEN 'created' THEN 'uploaded'
-                  WHEN 'estimating' THEN 'uploaded'
-                  WHEN 'awaiting_credit_reservation' THEN 'uploaded'
-                  WHEN 'queued' THEN 'queued'
-                  WHEN 'probing' THEN 'processing'
-                  WHEN 'extracting_audio' THEN 'processing'
-                  WHEN 'chunking' THEN 'processing'
-                  WHEN 'transcribing' THEN 'processing'
-                  WHEN 'generating_outputs' THEN 'processing'
-                  WHEN 'qa_validating' THEN 'processing'
-                  WHEN 'exporting' THEN 'processing'
-                  WHEN 'complete' THEN 'completed'
-                  WHEN 'failed' THEN 'failed'
-                  WHEN 'cancelled' THEN 'cancelled'
-                  ELSE 'processing'
+                  WHEN 'created' THEN 'UPLOADED'
+                  WHEN 'estimating' THEN 'UPLOADED'
+                  WHEN 'awaiting_credit_reservation' THEN 'UPLOADED'
+                  WHEN 'queued' THEN 'QUEUED'
+                  WHEN 'probing' THEN 'PROCESSING'
+                  WHEN 'extracting_audio' THEN 'PROCESSING'
+                  WHEN 'chunking' THEN 'PROCESSING'
+                  WHEN 'transcribing' THEN 'PROCESSING'
+                  WHEN 'generating_outputs' THEN 'PROCESSING'
+                  WHEN 'qa_validating' THEN 'PROCESSING'
+                  WHEN 'exporting' THEN 'PROCESSING'
+                  WHEN 'complete' THEN 'COMPLETED'
+                  WHEN 'failed' THEN 'FAILED'
+                  WHEN 'cancelled' THEN 'CANCELLED'
+                  ELSE 'PROCESSING'
                 END
                 WHERE status IN (
                   'created','estimating','awaiting_credit_reservation','queued','probing',
@@ -149,28 +217,28 @@ def _migrate_legacy_railway_jobstatus_enum(bind) -> None:
         op.execute(
             text(
                 "CREATE TYPE jobstatus AS ENUM ("
-                "'uploaded', 'queued', 'processing', 'completed', 'failed', 'cancelled')"
+                "'UPLOADED', 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED')"
             )
         )
         op.execute(
             text(
                 """
                 UPDATE jobs SET status = CASE status
-                  WHEN 'created' THEN 'uploaded'
-                  WHEN 'estimating' THEN 'uploaded'
-                  WHEN 'awaiting_credit_reservation' THEN 'uploaded'
-                  WHEN 'queued' THEN 'queued'
-                  WHEN 'probing' THEN 'processing'
-                  WHEN 'extracting_audio' THEN 'processing'
-                  WHEN 'chunking' THEN 'processing'
-                  WHEN 'transcribing' THEN 'processing'
-                  WHEN 'generating_outputs' THEN 'processing'
-                  WHEN 'qa_validating' THEN 'processing'
-                  WHEN 'exporting' THEN 'processing'
-                  WHEN 'complete' THEN 'completed'
-                  WHEN 'failed' THEN 'failed'
-                  WHEN 'cancelled' THEN 'cancelled'
-                  ELSE 'processing'
+                  WHEN 'created' THEN 'UPLOADED'
+                  WHEN 'estimating' THEN 'UPLOADED'
+                  WHEN 'awaiting_credit_reservation' THEN 'UPLOADED'
+                  WHEN 'queued' THEN 'QUEUED'
+                  WHEN 'probing' THEN 'PROCESSING'
+                  WHEN 'extracting_audio' THEN 'PROCESSING'
+                  WHEN 'chunking' THEN 'PROCESSING'
+                  WHEN 'transcribing' THEN 'PROCESSING'
+                  WHEN 'generating_outputs' THEN 'PROCESSING'
+                  WHEN 'qa_validating' THEN 'PROCESSING'
+                  WHEN 'exporting' THEN 'PROCESSING'
+                  WHEN 'complete' THEN 'COMPLETED'
+                  WHEN 'failed' THEN 'FAILED'
+                  WHEN 'cancelled' THEN 'CANCELLED'
+                  ELSE 'PROCESSING'
                 END
                 WHERE status IN (
                   'created','estimating','awaiting_credit_reservation','queued','probing',
