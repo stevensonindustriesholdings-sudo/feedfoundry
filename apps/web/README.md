@@ -2,6 +2,8 @@
 
 Customer-facing **Next.js (App Router)** app: **annual hosted archive** and **creator archive** positioning, **processing allowance** / **processing time** (avoid “credits” in customer copy), upload → job → outputs → public manifest — with **staging/debug** affordances embedded (System page, collapsible debug panels, smoke checks) without a separate “integration console.” Full stack setup: [docs/runbook.md](../../docs/runbook.md).
 
+**Phase 7:** the web app never holds **AI provider** secrets. Server-only proxy keys only. Product **Product Grid** UX must stay **preview / optional** until the API exposes matching fields — see [docs/phase7-product-grid-extension.md](../../docs/phase7-product-grid-extension.md) and the [AI operating brief](../../docs/ai-operating-brief.md).
+
 ## Requirements
 
 - Node **20+** recommended (Next 15).

@@ -6,6 +6,16 @@ Commercial posture is **annual hosted archive access** and a **creator archive**
 
 **Operator runbook (setup, env, Railway, Base44, AI):** [docs/runbook.md](docs/runbook.md)
 
+**Phase 7 — AI Worker Intelligence Layer (planning, not a launch pivot):** canonical brief and build contract:
+
+- [docs/ai-operating-brief.md](docs/ai-operating-brief.md) — production AI modules (Captain, Producer, Visual, Product signals, Verifier, Governor, …) vs **Cursor** build agents.
+- [docs/phase7-implementation-checklist.md](docs/phase7-implementation-checklist.md) — merge order, gates, risks.
+- [docs/phase7-agent-ownership-map.md](docs/phase7-agent-ownership-map.md) — parallel Cursor lanes A–F, allowed/forbidden paths.
+- [docs/phase7-product-grid-extension.md](docs/phase7-product-grid-extension.md) — **Product Grid / product imagery as optional preview/extension** alongside the video/audio/podcast wedge (not ecommerce).
+- [docs/phase7-railway-storage-provider-architecture.md](docs/phase7-railway-storage-provider-architecture.md) — Railway as baseline host only; **worker holds AI provider keys**; **no AI keys in the browser**; S3-compatible storage; mock-provider-first tests for new AI plumbing.
+
+**Rule:** new AI worker code paths must be **mock-provider-first** in CI until Captain explicitly enables real provider wiring.
+
 ## Repository layout
 
 - `apps/web` — Next.js customer app (proxy to API, no secrets in browser)
