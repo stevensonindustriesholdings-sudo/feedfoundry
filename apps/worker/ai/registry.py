@@ -23,7 +23,7 @@ def get_structured_ai_provider() -> AIProvider:
       and ``AI_STRUCTURED_PROVIDER_MODE=canary_openai`` are satisfied; otherwise raises
       :class:`ai.provider_mode.ProviderDisabledError` (fail-closed; no silent mock).
       Live ``POST /v1/responses`` runs only when :func:`ai.openai_canary_gates.check_openai_responses_http_gates_or_raise`
-      also passes (includes ``FF_OPENAI_CANARY_RUNNER_ENABLED=true``).
+      also passes (``FF_OPENAI_CANARY_RUNNER_ENABLED`` and/or ``FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE``).
     """
     mode = resolve_structured_provider_mode()
 

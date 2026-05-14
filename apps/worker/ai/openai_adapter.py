@@ -17,7 +17,12 @@ from ai.openai_canary_gates import (
     check_openai_structured_adapter_construct_gates_or_raise,
 )
 from ai.provider import AIProvider
-from ai.schemas.output_contracts import SCHEMA_REGISTRY
+from ai.schemas.output_contracts import (
+    FACTSHEET_SCHEMA_NAME,
+    FACTSHEET_SCHEMA_VERSION,
+    P7CanaryFactsheetLivePayload,
+    SCHEMA_REGISTRY,
+)
 from ai.types import AICompletionRequest, AICompletionResponse
 from app.services.ai_internal_policy import load_ai_canary_gate_config_from_env
 
@@ -46,6 +51,11 @@ def _format_schema_name_token(schema_name: str, schema_version: str) -> str:
 
 def _json_schema_for_request(req: AICompletionRequest) -> dict[str, Any]:
     key = (req.schema_name, req.schema_version)
+    # OpenAI ``strict`` JSON Schema requires every property key in ``required``.
+    # Production ``FactsheetPayload`` omits optional ``key_facts`` from required;
+    # wire the strict-safe canary shape while callers still validate as FactsheetPayload.
+    if key == (FACTSHEET_SCHEMA_NAME, FACTSHEET_SCHEMA_VERSION):
+        return P7CanaryFactsheetLivePayload.model_json_schema()
     model_cls = SCHEMA_REGISTRY.get(key)
     if model_cls is None:
         raise OpenAIHTTPAdapterError(

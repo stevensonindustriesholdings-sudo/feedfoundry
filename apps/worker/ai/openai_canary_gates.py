@@ -31,6 +31,12 @@ def openai_canary_runner_env_enabled() -> bool:
     return _truthy_env(os.environ.get("FF_OPENAI_CANARY_RUNNER_ENABLED"))
 
 
+def worker_enrichment_openai_http_env_enabled() -> bool:
+    """Allow ``POST …/v1/responses`` from worker transcript enrichment (no import cycle)."""
+
+    return _truthy_env(os.environ.get("FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE"))
+
+
 def check_openai_structured_canary_gates_or_raise() -> None:
     """Validate env/policy for structured OpenAI canary booleans, numerics, provider, key."""
 
@@ -69,11 +75,11 @@ def check_openai_structured_adapter_construct_gates_or_raise() -> None:
 
 
 def check_openai_responses_http_gates_or_raise() -> None:
-    """All gates required before a live ``POST .../v1/responses`` (staging canary runner path)."""
+    """All gates required before a live ``POST .../v1/responses`` (canary runner and/or worker enrichment)."""
 
     check_openai_structured_adapter_construct_gates_or_raise()
-    if not openai_canary_runner_env_enabled():
+    if not openai_canary_runner_env_enabled() and not worker_enrichment_openai_http_env_enabled():
         raise ProviderDisabledError(
             f"[{CanaryFailClosedCode.CANARY_RUNNER_FLAG_OFF.value}] Structured OpenAI HTTP requires "
-            "FF_OPENAI_CANARY_RUNNER_ENABLED=true."
+            "FF_OPENAI_CANARY_RUNNER_ENABLED=true and/or FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE=true."
         )

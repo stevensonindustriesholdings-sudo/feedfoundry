@@ -1,10 +1,15 @@
-"""Optional mock-only AI enrichment in the worker job path (Phase 7C).
+"""Optional AI enrichment in the worker job path (Phase 7C).
 
-Gated by ``FF_WORKER_AI_ENRICHMENT_ENABLED`` (default **off**). Uses
-:class:`ai.mock_provider.MockAIProvider` only — no real provider SDKs or HTTP.
-Persists :class:`app.models.AIRun` / :class:`app.models.AIStageLog` via the same
-SQLModel ``Session`` as the job; does not touch credit ledger or processing-minute
-settlement.
+Gated by ``FF_WORKER_AI_ENRICHMENT_ENABLED`` (default **off**). By default uses
+:class:`ai.mock_provider.MockAIProvider` only (no HTTP).
+
+When ``AI_STRUCTURED_PROVIDER_MODE=canary_openai`` and structured canary gates pass,
+``FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE=true`` and/or ``FF_OPENAI_CANARY_RUNNER_ENABLED=true``
+allows bounded ``POST …/v1/responses`` for transcript intelligence (see
+``FF_WORKER_AI_ENRICHMENT_OPENAI_MAX_CALLS``). Visual and product stages stay mock-only.
+
+Persists :class:`app.models.AIRun` / :class:`app.models.AIStageLog`; does not touch
+credit ledger or processing-minute settlement.
 """
 
 from __future__ import annotations
@@ -17,6 +22,13 @@ from sqlmodel import Session
 
 from ai.mock_provider import MockAIProvider
 from ai.modules.output_validator import ValidationStatus
+from ai.openai_adapter import OpenAIHTTPAdapterError
+from ai.openai_canary_gates import (
+    check_openai_responses_http_gates_or_raise,
+    check_openai_structured_adapter_construct_gates_or_raise,
+)
+from ai.provider_mode import ProviderDisabledError, StructuredProviderMode, resolve_structured_provider_mode
+from ai.registry import get_structured_ai_provider
 from ai.modules.product_signal import STAGE_NAME as PRODUCT_STAGE
 from ai.modules.product_signal import ProductSignalValidationError, run_product_signal
 from ai.modules.transcript_intelligence import STAGE_NAME as TRANSCRIPT_STAGE
@@ -38,6 +50,8 @@ log = logging.getLogger("feedfoundry.worker.ai.pipeline")
 
 # Default **off** — production behaviour unchanged unless explicitly enabled.
 ENV_AI_ENRICHMENT = "FF_WORKER_AI_ENRICHMENT_ENABLED"
+ENV_ENRICHMENT_OPENAI_LIVE = "FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE"
+ENV_ENRICHMENT_OPENAI_MAX_CALLS = "FF_WORKER_AI_ENRICHMENT_OPENAI_MAX_CALLS"
 
 
 def _truthy_env(val: str | None) -> bool:
@@ -69,6 +83,95 @@ class _AccountingMockProvider(AIProvider):
         self.cost_estimate_total += float(resp.cost_estimate or 0.0)
         self.last_request_id = resp.provider_request_id
         return resp
+
+
+class _BudgetedOpenaiThenMockProvider(AIProvider):
+    """Routes the first *budget* completions to OpenAI, then mock (token/call cap)."""
+
+    name = "openai"
+
+    def __init__(self, openai: AIProvider, mock: AIProvider, *, budget: int) -> None:
+        self._openai = openai
+        self._mock = mock
+        self._remaining = max(0, int(budget))
+        self.live_calls_used = 0
+
+    def complete(self, request: AICompletionRequest) -> AICompletionResponse:
+        if self._remaining > 0:
+            self._remaining -= 1
+            self.live_calls_used += 1
+            return self._openai.complete(request)
+        return self._mock.complete(request)
+
+
+class _AccountingAIProvider(AIProvider):
+    """Wraps any :class:`AIProvider` for AIRun stage log aggregates."""
+
+    def __init__(self, inner: AIProvider) -> None:
+        self._inner = inner
+        self.input_tokens_total = 0
+        self.output_tokens_total = 0
+        self.cost_estimate_total = 0.0
+        self.last_request_id: str | None = None
+
+    @property
+    def name(self) -> str:
+        return self._inner.name
+
+    @property
+    def budgeted_hybrid(self) -> _BudgetedOpenaiThenMockProvider | None:
+        return self._inner if isinstance(self._inner, _BudgetedOpenaiThenMockProvider) else None
+
+    def complete(self, request: AICompletionRequest) -> AICompletionResponse:
+        resp = self._inner.complete(request)
+        self.input_tokens_total += int(resp.input_tokens or 0)
+        self.output_tokens_total += int(resp.output_tokens or 0)
+        self.cost_estimate_total += float(resp.cost_estimate or 0.0)
+        self.last_request_id = resp.provider_request_id
+        return resp
+
+
+def _enrichment_openai_live_requested() -> bool:
+    return _truthy_env(os.environ.get(ENV_ENRICHMENT_OPENAI_LIVE))
+
+
+def _enrichment_openai_max_calls() -> int:
+    raw = os.environ.get(ENV_ENRICHMENT_OPENAI_MAX_CALLS, "4") or "4"
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 4
+
+
+def _resolve_transcript_intelligence_provider() -> tuple[AIProvider, str, str, int]:
+    """Return (provider, stage_log_provider_label, model_name, live_budget_or_zero).
+
+    Live path requires ``canary_openai`` plus structured + HTTP gates (runner and/or
+    ``FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE``).
+    """
+    if not _enrichment_openai_live_requested():
+        return _AccountingMockProvider(), "mock", "mock", 0
+
+    if resolve_structured_provider_mode() != StructuredProviderMode.CANARY_OPENAI:
+        log.info("worker_enrichment_openai_skipped structured_mode_not_canary_openai")
+        return _AccountingMockProvider(), "mock", "mock", 0
+
+    try:
+        check_openai_structured_adapter_construct_gates_or_raise()
+        check_openai_responses_http_gates_or_raise()
+    except ProviderDisabledError as exc:
+        log.info("worker_enrichment_openai_skipped gates=%s", type(exc).__name__)
+        return _AccountingMockProvider(), "mock", "mock", 0
+
+    budget = _enrichment_openai_max_calls()
+    if budget <= 0:
+        log.info("worker_enrichment_openai_skipped budget_zero")
+        return _AccountingMockProvider(), "mock", "mock", 0
+
+    openai = get_structured_ai_provider()
+    hybrid = _BudgetedOpenaiThenMockProvider(openai, MockAIProvider(), budget=budget)
+    model = (os.environ.get("AI_MODEL") or "").strip() or "gpt-4.1-mini"
+    return _AccountingAIProvider(hybrid), "openai", model, budget
 
 
 def _job_is_cancelled(session: Session, job_id: str) -> bool:
@@ -226,13 +329,16 @@ def maybe_run_mock_ai_job_enrichment(
     if not text and vctx is None and not pimgs:
         return
 
-    prov = _AccountingMockProvider()
+    ti_prov, ti_log_provider, ti_model, _ti_budget = _resolve_transcript_intelligence_provider()
+    plan_ver = (
+        "p7-worker-enrichment-openai-budget-1" if ti_log_provider == "openai" else "p7-worker-mock-enrichment-1"
+    )
     now = utcnow()
     airun = AIRun(
         job_id=job.id,
         organisation_id=job.organisation_id,
         status="running",
-        captain_plan_version="p7-worker-mock-enrichment-1",
+        captain_plan_version=plan_ver,
         created_at=now,
         updated_at=now,
     )
@@ -284,26 +390,53 @@ def maybe_run_mock_ai_job_enrichment(
         t0 = utcnow()
         chunks: list[TranscriptChunkInput] = chunks_from_plain_text(text, max_chars=1200, overlap=80)
         try:
-            run_transcript_intelligence(chunks, job_id=job.id, provider=prov, episode_title=None)
+            ti_artifacts = run_transcript_intelligence(
+                chunks, job_id=job.id, provider=ti_prov, episode_title=None, model=ti_model
+            )
             t1 = utcnow()
+            bh = ti_prov.budgeted_hybrid if isinstance(ti_prov, _AccountingAIProvider) else None
+            live_used = bh.live_calls_used if bh else 0
+            artifact_digest: list[dict[str, Any]] = []
+            for a in ti_artifacts:
+                mdl = a.validation.model
+                if mdl is None:
+                    continue
+                md = mdl.model_dump()
+                digest: dict[str, Any] = {"schema_name": a.schema_name}
+                if "title" in md:
+                    digest["title_chars"] = len(str(md.get("title", "")))
+                if "summary" in md:
+                    digest["summary_chars"] = len(str(md.get("summary", "")))
+                if isinstance(md.get("items"), list):
+                    digest["faq_items"] = len(md["items"])
+                if isinstance(md.get("chapters"), list):
+                    digest["chapters"] = len(md["chapters"])
+                if "episode_title" in md:
+                    digest["episode_title_chars"] = len(str(md.get("episode_title", "")))
+                artifact_digest.append(digest)
             _append_stage_log(
                 session,
                 ai_run_id=run_id,
                 job_id=job.id,
                 stage_name=TRANSCRIPT_STAGE,
                 status="completed",
-                provider_name="mock",
-                model_name="mock",
+                provider_name=ti_log_provider,
+                model_name=ti_model,
                 started_at=t0,
                 finished_at=t1,
-                input_tokens=prov.input_tokens_total,
-                output_tokens=prov.output_tokens_total,
-                cost_estimate_internal=prov.cost_estimate_total or None,
+                input_tokens=ti_prov.input_tokens_total,
+                output_tokens=ti_prov.output_tokens_total,
+                cost_estimate_internal=ti_prov.cost_estimate_total or None,
                 validation_status=ValidationStatus.ACCEPTED.value,
                 error_code=None,
                 error_message=None,
-                provider_request_id=prov.last_request_id,
-                extra_json={"chunks": len(chunks)},
+                provider_request_id=ti_prov.last_request_id,
+                extra_json={
+                    "chunks": len(chunks),
+                    "live_openai_completions_used": live_used,
+                    "artifact_digest": artifact_digest[:20],
+                    "artifact_count": len(ti_artifacts),
+                },
             )
         except TranscriptIntelligenceValidationError as exc:
             t1 = utcnow()
@@ -313,20 +446,42 @@ def maybe_run_mock_ai_job_enrichment(
                 job_id=job.id,
                 stage_name=TRANSCRIPT_STAGE,
                 status="failed",
-                provider_name="mock",
-                model_name="mock",
+                provider_name=ti_log_provider,
+                model_name=ti_model,
                 started_at=t0,
                 finished_at=t1,
-                input_tokens=prov.input_tokens_total,
-                output_tokens=prov.output_tokens_total,
-                cost_estimate_internal=prov.cost_estimate_total or None,
+                input_tokens=ti_prov.input_tokens_total,
+                output_tokens=ti_prov.output_tokens_total,
+                cost_estimate_internal=ti_prov.cost_estimate_total or None,
                 validation_status=ValidationStatus.REJECTED.value,
                 error_code="transcript_intelligence_validation",
                 error_message=str(exc)[:2048],
-                provider_request_id=prov.last_request_id,
+                provider_request_id=ti_prov.last_request_id,
                 extra_json=None,
             )
             log.warning("mock_ai_transcript_validation_failed job_id=%s err=%s", job.id, exc)
+        except OpenAIHTTPAdapterError as exc:
+            t1 = utcnow()
+            _append_stage_log(
+                session,
+                ai_run_id=run_id,
+                job_id=job.id,
+                stage_name=TRANSCRIPT_STAGE,
+                status="failed",
+                provider_name="openai",
+                model_name=ti_model,
+                started_at=t0,
+                finished_at=t1,
+                input_tokens=ti_prov.input_tokens_total,
+                output_tokens=ti_prov.output_tokens_total,
+                cost_estimate_internal=ti_prov.cost_estimate_total or None,
+                validation_status=None,
+                error_code=exc.code,
+                error_message=str(exc)[:2048],
+                provider_request_id=ti_prov.last_request_id,
+                extra_json=None,
+            )
+            log.warning("worker_enrichment_openai_http_failed job_id=%s code=%s", job.id, exc.code)
 
     if _job_is_cancelled(session, job.id):
         _finish_run("cancelled", error_code="cancelled", error_message="Cancelled after transcript_intelligence.")
