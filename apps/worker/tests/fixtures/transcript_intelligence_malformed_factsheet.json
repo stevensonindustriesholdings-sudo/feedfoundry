@@ -1,0 +1,5 @@
+{
+  "title": 12345,
+  "summary": "not a valid factsheet for pydantic",
+  "key_facts": "should be a list"
+}
