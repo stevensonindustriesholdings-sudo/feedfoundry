@@ -1,4 +1,4 @@
-"""Guards for Postgres ``jobstatus`` migration behaviour (006 text cast + 008 optional label)."""
+"""Guards for Postgres ``jobstatus`` migration behaviour (006 text cast + 009 optional label)."""
 
 from pathlib import Path
 
@@ -18,8 +18,8 @@ def test_006_job_status_update_compares_text_not_enum_literals():
     assert ")::jobstatus" in sql
 
 
-def test_008_adds_created_label_idempotently():
-    body = _read_migration("008_jobstatus_created")
+def test_009_adds_created_label_idempotently():
+    body = _read_migration("009_jobstatus_created")
     assert "pg_catalog.pg_enum" in body
     assert "enumlabel = 'created'" in body
     assert "ALTER TYPE jobstatus ADD VALUE 'created'" in body

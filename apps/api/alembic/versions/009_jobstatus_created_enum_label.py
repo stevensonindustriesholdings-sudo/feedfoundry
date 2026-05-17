@@ -1,7 +1,7 @@
 """Idempotent: add legacy ``created`` label to ``jobstatus`` enum (optional tooling parity).
 
-Revision ID: 008_jobstatus_created_enum_label
-Revises: 007_youtube_source_queue
+Revision ID: 009_jobstatus_created_enum_label
+Revises: 008_jobstatus_sqlalchemy_labels
 Create Date: 2026-05-17
 
 006 normalizes legacy rows via ``status::text`` so ``IN (...)`` does not coerce unknown
@@ -16,8 +16,8 @@ from typing import Sequence, Union
 from alembic import op
 from sqlalchemy import text
 
-revision: str = "008_jobstatus_created_enum_label"
-down_revision: Union[str, None] = "007_youtube_source_queue"
+revision: str = "009_jobstatus_created_enum_label"
+down_revision: Union[str, None] = "008_jobstatus_sqlalchemy_labels"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
