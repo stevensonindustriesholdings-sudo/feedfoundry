@@ -1,0 +1,21 @@
+{
+  "schema": "stevenson.product.template_ids.snapshot/v1",
+  "generated_at": "2026-05-17",
+  "source_repo": "stevenson-skunkworks-ceo",
+  "source_path": "packages/si-video-composition/src/template-ids.mjs",
+  "rtmr": [
+    "single_screenshot_punchline_hf_v1",
+    "chat_thread_stack_hf_v1",
+    "operator_repair_preview_hf_v1"
+  ],
+  "trenderly": [
+    "trend_alert_short_hf_v1",
+    "product_reveal_short_hf_v1",
+    "three_frame_hook_proof_product_hf_v1"
+  ],
+  "feedfoundry": [
+    "ff_clip_storyboard_vertical_hf_v1",
+    "ff_chapter_cards_stack_hf_v1",
+    "ff_export_bundle_teaser_hf_v1"
+  ]
+}
