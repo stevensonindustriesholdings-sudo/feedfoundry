@@ -16,6 +16,10 @@ def _truthy(name: str) -> bool:
 
 
 def run_worker_ai_router_probe(job_id: str) -> None:
+    from hermes_kernel_client import log_kernel_probe
+
+    log_kernel_probe(job_id)
+
     from app.services.ai_router import AIResponseLog, build_request_for_module, load_ai_routing
     from app.settings import get_settings
 
