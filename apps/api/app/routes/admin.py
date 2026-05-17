@@ -1,12 +1,36 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import desc
 from sqlmodel import Session, select
 
 from app.auth import verify_internal_key
 from app.db import get_session
-from app.models import Job, ProviderConfig
+from app.models import Job, ProviderConfig, YoutubeSourceQueue
 from app.services import audit
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/youtube-queue")
+def admin_list_youtube_queue(
+    _: None = Depends(verify_internal_key),
+    session: Session = Depends(get_session),
+    limit: int = 100,
+):
+    stmt = select(YoutubeSourceQueue).order_by(desc(YoutubeSourceQueue.created_at)).limit(limit)
+    rows = session.exec(stmt).all()
+    audit.log_admin_event("admin_list_youtube_queue", {"count": len(rows)})
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "organisation_id": r.organisation_id,
+                "youtube_url": r.youtube_url,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.get("/jobs")

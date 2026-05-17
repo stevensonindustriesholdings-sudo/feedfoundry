@@ -18,7 +18,9 @@ from app.routes import (
     observability,
     outputs,
     stripe_webhooks,
+    system_surface,
     uploads,
+    youtube_queue,
 )
 from app.settings import get_settings
 
@@ -59,6 +61,8 @@ _OPENAPI_TAGS = [
     {"name": "stripe_webhooks", "description": "Stripe webhook receiver (server-to-server only)."},
     {"name": "admin", "description": "Internal operator routes (requires internal API key)."},
     {"name": "observability", "description": "Version/build metadata and structured readiness checks."},
+    {"name": "system", "description": "Internal worker / provider hints (no secrets)."},
+    {"name": "youtube_source_queue", "description": "Enqueue-only YouTube URL backlog (no scraping)."},
 ]
 
 app = FastAPI(title="FeedFoundry API", lifespan=lifespan, openapi_tags=_OPENAPI_TAGS)
@@ -114,3 +118,5 @@ app.include_router(credits.router, prefix="/v1")
 app.include_router(manifests.router, prefix="/v1")
 app.include_router(stripe_webhooks.router, prefix="/v1")
 app.include_router(admin.router, prefix="/v1")
+app.include_router(system_surface.router, prefix="/v1")
+app.include_router(youtube_queue.router, prefix="/v1")

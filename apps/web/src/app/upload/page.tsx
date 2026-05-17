@@ -4,7 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { browserGet, browserPost } from "@/lib/client/api";
 import { getOrgId, setLatestJobId } from "@/lib/org-storage";
-import type { CreateJobResponse, CompleteUploadResponse, JobOutputsResponse, JobStatusResponse, PresignUploadResponse } from "@/lib/types";
+import type {
+  CreateJobResponse,
+  CompleteUploadResponse,
+  JobOutputsResponse,
+  JobStatusResponse,
+  PresignUploadResponse,
+  YoutubeQueueEnqueueResponse,
+} from "@/lib/types";
 import { OUTPUT_OPTIONS } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import type { ClientError } from "@/lib/errors";
@@ -29,6 +36,10 @@ export default function UploadPage() {
   const [liveOutputs, setLiveOutputs] = useState<JobOutputsResponse | null>(null);
   const [livePollErr, setLivePollErr] = useState<string | null>(null);
   const [isLocal, setIsLocal] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeMsg, setYoutubeMsg] = useState<string | null>(null);
+  const [youtubeErr, setYoutubeErr] = useState<string | null>(null);
+  const [youtubeBusy, setYoutubeBusy] = useState(false);
 
   const toggleOutput = (id: string) => {
     setOutputs((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -173,6 +184,25 @@ export default function UploadPage() {
     };
   }, [job?.job_id]);
 
+  const queueYoutubeUrl = useCallback(async () => {
+    setYoutubeErr(null);
+    setYoutubeMsg(null);
+    const u = youtubeUrl.trim();
+    if (!u) {
+      setYoutubeErr("Paste a public YouTube watch or Shorts URL.");
+      return;
+    }
+    setYoutubeBusy(true);
+    const r = await browserPost<YoutubeQueueEnqueueResponse>("/v1/youtube-source-queue", { youtube_url: u }, getOrgId());
+    setYoutubeBusy(false);
+    if (!r.ok) {
+      setYoutubeErr(r.error.message);
+      return;
+    }
+    setYoutubeMsg(`Queued backlog id ${r.data.id} — no download started.`);
+    setYoutubeUrl("");
+  }, [youtubeUrl]);
+
   return (
     <div className="space-y-10">
       {isLocal ? (
@@ -194,6 +224,10 @@ export default function UploadPage() {
           a processing job. Confirming a job reserves{" "}
           <strong className="font-medium text-zinc-400">processing time</strong> up front so work never starts without
           allowance.
+        </p>
+        <p className="text-sm leading-relaxed text-zinc-500">
+          Optional: queue a <strong className="font-medium text-zinc-400">public YouTube URL</strong> for a future
+          pipeline — we only record the link today (no ingestion, no auth bypass).
         </p>
       </header>
 
@@ -272,6 +306,38 @@ export default function UploadPage() {
               the job finishes).
             </span>
           </label>
+          <div className="rounded-xl border border-surface-border/60 bg-surface/20 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">YouTube URL backlog</p>
+            <label htmlFor="yturl" className="mt-2 block text-sm font-medium text-zinc-300">
+              Public YouTube URL (enqueue only)
+            </label>
+            <input
+              id="yturl"
+              type="url"
+              placeholder="https://www.youtube.com/watch?v=…"
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-surface-border bg-surface px-3 py-2.5 text-sm text-zinc-100"
+            />
+            <button
+              type="button"
+              disabled={youtubeBusy}
+              onClick={() => void queueYoutubeUrl()}
+              className="mt-3 w-full rounded-lg border border-accent/40 bg-surface px-4 py-2 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-50 sm:w-auto"
+            >
+              {youtubeBusy ? "Queueing…" : "Queue URL (no download)"}
+            </button>
+            {youtubeErr ? (
+              <p className="mt-2 text-xs text-red-300" role="alert">
+                {youtubeErr}
+              </p>
+            ) : null}
+            {youtubeMsg ? (
+              <p className="mt-2 text-xs text-emerald-300" aria-live="polite">
+                {youtubeMsg}
+              </p>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={() => void runUpload()}

@@ -407,6 +407,13 @@ def _wait_for_source_object(
 
 def process_job(session: Session, job: Job) -> None:
     settings = get_settings()
+    try:
+        from ai_router_probe import run_worker_ai_router_probe
+
+        run_worker_ai_router_probe(job.id)
+    except Exception:
+        log.exception("ai_router_probe_failed job_id=%s", job.id)
+
     media = session.get(MediaAsset, job.media_asset_id)
     if not media:
         raise JobProcessingFailure("media_missing", "Job media asset record was not found.")

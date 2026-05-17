@@ -157,6 +157,21 @@ modules:
     require_json_schema: true
     cost_ceiling_credits: 5
 
+  worker_router_probe:
+    enabled: true
+    primary:
+      provider: openrouter
+      model_env: OPENROUTER_ROUTER_PROBE_MODEL
+    fallback:
+      provider: openai
+      model_env: OPENAI_CHEAP_TEXT_MODEL
+    max_input_tokens: 120
+    max_output_tokens: 24
+    temperature: 0
+    timeout_seconds: 30
+    max_retries: 1
+    cost_ceiling_credits: 0.01
+
 quality_gates:
   require_transcript_before_outputs: true
   require_fact_sheet_for_manifest: true

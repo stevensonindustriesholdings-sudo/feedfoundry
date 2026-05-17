@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     # Optional OpenAI (worker transcript v0 — Whisper); leave unset to use transcript_stub
     openai_api_key: str = ""
+    # Optional OpenRouter (worker AI router probe when FF_AI_LIVE_CALLS_ENABLED=1)
+    openrouter_api_key: str = ""
 
     # Worker-related (API logs readiness; worker reads same env names)
     worker_poll_interval_seconds: int = 5

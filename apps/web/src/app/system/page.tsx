@@ -6,8 +6,10 @@ export const dynamic = "force-dynamic";
 export default async function SystemPage() {
   let healthJson: unknown = null;
   let readyJson: unknown = null;
+  let hintsJson: unknown = null;
   let healthErr: string | null = null;
   let readyErr: string | null = null;
+  let hintsErr: string | null = null;
 
   try {
     const h = await forwardToFeedFoundry("/health");
@@ -25,6 +27,14 @@ export default async function SystemPage() {
   } catch (e) {
     readyErr = (e as Error).message;
   }
+  try {
+    const w = await forwardToFeedFoundry("/v1/system/worker-hints");
+    const tw = await w.text();
+    if (!w.ok) hintsErr = `HTTP ${w.status}: ${tw.slice(0, 200)}`;
+    else hintsJson = JSON.parse(tw);
+  } catch (e) {
+    hintsErr = (e as Error).message;
+  }
 
   const base = process.env.NEXT_PUBLIC_FEEDFOUNDRY_API_BASE_URL || "";
 
@@ -39,7 +49,7 @@ export default async function SystemPage() {
 
       <OrgSwitcher />
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <article className="rounded-xl border border-surface-border bg-surface-raised/40 p-4">
           <h2 className="text-sm font-semibold text-zinc-300">GET /health</h2>
           <pre className="mt-2 max-h-64 overflow-auto rounded bg-black/40 p-2 text-xs text-zinc-300">
@@ -50,6 +60,13 @@ export default async function SystemPage() {
           <h2 className="text-sm font-semibold text-zinc-300">GET /ready</h2>
           <pre className="mt-2 max-h-64 overflow-auto rounded bg-black/40 p-2 text-xs text-zinc-300">
             {readyErr ?? JSON.stringify(readyJson, null, 2)}
+          </pre>
+        </article>
+        <article className="rounded-xl border border-surface-border bg-surface-raised/40 p-4 md:col-span-2 lg:col-span-1">
+          <h2 className="text-sm font-semibold text-zinc-300">GET /v1/system/worker-hints</h2>
+          <p className="mt-1 text-xs text-zinc-500">Provider flags only — keys stay server-side.</p>
+          <pre className="mt-2 max-h-64 overflow-auto rounded bg-black/40 p-2 text-xs text-zinc-300">
+            {hintsErr ?? JSON.stringify(hintsJson, null, 2)}
           </pre>
         </article>
       </section>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { browserGet, browserPost } from "@/lib/client/api";
 import { getLatestJobId, getOrgId, setLatestJobId } from "@/lib/org-storage";
-import type { JobListResponse, JobStatusResponse } from "@/lib/types";
+import type { JobListResponse, JobStatusResponse, WorkerHintsResponse } from "@/lib/types";
 import { DebugPanel } from "@/components/DebugPanel";
 import { formatApiUnitsAsProcessing, jobEstimateMinutes } from "@/lib/processing-display";
 
@@ -26,6 +26,14 @@ export default function JobsPage() {
   const [polling, setPolling] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelMsg, setCancelMsg] = useState<string | null>(null);
+  const [hints, setHints] = useState<WorkerHintsResponse | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const r = await browserGet<WorkerHintsResponse>("/v1/system/worker-hints", getOrgId());
+      if (r.ok) setHints(r.data);
+    })();
+  }, []);
 
   useEffect(() => {
     const j = getLatestJobId();
@@ -93,6 +101,20 @@ export default function JobsPage() {
           <span className="font-mono text-zinc-500">POST /v1/jobs/{"{id}"}/cancel</span>.
         </p>
       </header>
+
+      {hints ? (
+        <div className="max-w-3xl rounded-xl border border-surface-border/80 bg-surface/30 px-4 py-3 text-xs text-zinc-400">
+          <span className="font-semibold text-zinc-300">Worker / provider mode</span>
+          {" · "}
+          live AI calls {hints.ff_ai_live_calls_enabled ? "on" : "off"}
+          {" · "}
+          OpenAI key configured: {hints.openai_configured ? "yes" : "no"}
+          {" · "}
+          OpenRouter key configured: {hints.openrouter_configured ? "yes" : "no"}
+          {" · "}
+          YouTube URL queue: {hints.youtube_source_queue_enabled ? "enabled" : "off"}
+        </div>
+      ) : null}
 
       <section className="rounded-xl border border-surface-border bg-surface-raised/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

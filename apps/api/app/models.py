@@ -267,6 +267,20 @@ class ProviderConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class YoutubeSourceQueue(SQLModel, table=True):
+    """Operator- or customer-submitted public YouTube URLs awaiting a future pipeline."""
+
+    __tablename__ = "youtube_source_queue"
+    __table_args__ = (Index("ix_youtube_queue_org_status", "organisation_id", "status"),)
+
+    id: str = Field(default_factory=lambda: new_id("ytq"), primary_key=True)
+    organisation_id: str = Field(foreign_key="organisations.id", index=True)
+    youtube_url: str = Field(max_length=2048)
+    status: str = Field(default="queued", max_length=32)
+    notes: Optional[str] = Field(default=None, max_length=1024)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class StripeWebhookEvent(SQLModel, table=True):
     """Processed Stripe event ids — duplicate deliveries must not mutate state."""
 

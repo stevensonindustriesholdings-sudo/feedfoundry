@@ -131,6 +131,36 @@ export type ReadyResponse = {
   checks?: Record<string, unknown>;
 };
 
+/** GET /v1/system/worker-hints — no secrets. */
+export type WorkerHintsResponse = {
+  ff_ai_live_calls_enabled: boolean;
+  openai_configured: boolean;
+  openrouter_configured: boolean;
+  ai_routing_modules_loaded: number;
+  youtube_source_queue_enabled: boolean;
+  notes?: string;
+};
+
+export type YoutubeQueueEnqueueResponse = {
+  id: string;
+  youtube_url: string;
+  status: string;
+  detail?: string;
+};
+
+export type YoutubeQueueItemResponse = {
+  id: string;
+  youtube_url: string;
+  status: string;
+  notes?: string | null;
+  created_at?: string | null;
+};
+
+export type YoutubeQueueListResponse = {
+  items: YoutubeQueueItemResponse[];
+  total: number;
+};
+
 export const OUTPUT_OPTIONS = [
   { id: "transcript", label: "Transcript" },
   { id: "clean_transcript", label: "Clean transcript" },
