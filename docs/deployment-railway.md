@@ -200,6 +200,18 @@ They are **not** automatically run by the API server on boot (keeps rollouts pre
 1. **Railway one-off shell** or **release phase** running `alembic upgrade head` before the new revision serves traffic, or  
 2. A dedicated **migration** service/job triggered on deploy.
 
+### `jobstatus` enum (006 / 008)
+
+Revision **006** normalizes legacy pipeline status strings on `jobs.status`. On PostgreSQL, comparing an **enum** column to string literals such as `'created'` coerces each literal to the enum type first; if the label was never part of `jobstatus`, the migration fails before any row updates. **006** therefore compares via `status::text` and casts the `CASE` result back with `::jobstatus`. Revision **008** idempotently runs `ALTER TYPE jobstatus ADD VALUE 'created'` when that label is missing (guarded via `pg_enum`), for older tooling or partial runs.
+
+**Migrate by name (Railway CLI)** — use your Railway **project id** from internal product config (e.g. CEO `config/railway-products.json`); do not paste `DATABASE_URL` into logs or tickets:
+
+```bash
+railway run --project <project_id> --environment production --service migrate -- sh -c 'cd apps/api && PYTHONPATH=. alembic -c alembic.ini upgrade head'
+```
+
+After upgrade, confirm OpenAPI lists **`POST /v1/youtube-source-queue`** (requires deploy that includes `007_youtube_source_queue` + **008**).
+
 ## Seed script
 
 ```bash

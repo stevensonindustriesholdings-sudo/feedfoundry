@@ -181,22 +181,24 @@ def upgrade() -> None:
         op.execute(
             text(
                 """
-                UPDATE jobs SET status = CASE status
-                  WHEN 'created' THEN 'uploaded'
-                  WHEN 'estimating' THEN 'uploaded'
-                  WHEN 'awaiting_credit_reservation' THEN 'uploaded'
-                  WHEN 'queued' THEN 'queued'
-                  WHEN 'probing' THEN 'processing'
-                  WHEN 'extracting_audio' THEN 'processing'
-                  WHEN 'chunking' THEN 'processing'
-                  WHEN 'transcribing' THEN 'processing'
-                  WHEN 'generating_outputs' THEN 'processing'
-                  WHEN 'qa_validating' THEN 'processing'
-                  WHEN 'exporting' THEN 'processing'
-                  WHEN 'complete' THEN 'completed'
-                  ELSE status
-                END
-                WHERE status IN (
+                UPDATE jobs SET status = (
+                  CASE status::text
+                    WHEN 'created' THEN 'uploaded'
+                    WHEN 'estimating' THEN 'uploaded'
+                    WHEN 'awaiting_credit_reservation' THEN 'uploaded'
+                    WHEN 'queued' THEN 'queued'
+                    WHEN 'probing' THEN 'processing'
+                    WHEN 'extracting_audio' THEN 'processing'
+                    WHEN 'chunking' THEN 'processing'
+                    WHEN 'transcribing' THEN 'processing'
+                    WHEN 'generating_outputs' THEN 'processing'
+                    WHEN 'qa_validating' THEN 'processing'
+                    WHEN 'exporting' THEN 'processing'
+                    WHEN 'complete' THEN 'completed'
+                    ELSE status::text
+                  END
+                )::jobstatus
+                WHERE status::text IN (
                   'created','estimating','awaiting_credit_reservation','queued','probing',
                   'extracting_audio','chunking','transcribing','generating_outputs',
                   'qa_validating','exporting','complete'
