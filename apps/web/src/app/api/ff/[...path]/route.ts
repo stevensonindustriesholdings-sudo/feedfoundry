@@ -21,12 +21,16 @@ function isAllowed(method: string, segments: string[]): boolean {
     if (/^v1\/jobs\/[^/]+\/outputs$/.test(p)) return true;
     if (/^v1\/jobs\/[^/]+\/outputs\/catalog$/.test(p)) return true;
     if (/^v1\/manifests\/[^/]+\/[^/]+\.json$/.test(p)) return true;
+    if (p === "v1/youtube-source-queue") return true;
+    if (p === "v1/system/worker-hints") return true;
+    if (p === "v1/admin/youtube-queue" || p === "v1/admin/jobs" || p === "v1/admin/provider-configs") return true;
     return false;
   }
   if (method === "POST") {
     if (p === "v1/uploads/presign") return true;
     if (p === "v1/uploads/complete") return true;
     if (p === "v1/jobs") return true;
+    if (p === "v1/youtube-source-queue") return true;
     if (/^v1\/jobs\/[^/]+\/cancel$/.test(p)) return true;
     return false;
   }

@@ -161,6 +161,40 @@ export type YoutubeQueueListResponse = {
   total: number;
 };
 
+/** GET /v1/admin/youtube-queue */
+export type AdminYoutubeQueueItem = {
+  id: string;
+  organisation_id: string;
+  youtube_url: string;
+  status: string;
+  created_at?: string | null;
+};
+
+export type AdminYoutubeQueueResponse = {
+  items: AdminYoutubeQueueItem[];
+};
+
+/** GET /v1/admin/provider-configs — row shape mirrors API (no secrets in model). */
+export type AdminProviderConfigRow = {
+  id: string;
+  provider: string;
+  model: string;
+  module_name: string;
+  enabled?: boolean;
+  priority?: number;
+  max_input_tokens?: number | null;
+  max_output_tokens?: number | null;
+  timeout_seconds?: number | null;
+  max_retries?: number | null;
+  cost_ceiling_credits?: number | null;
+  fallback_provider?: string | null;
+  fallback_model?: string | null;
+};
+
+export type AdminProviderConfigsResponse = {
+  provider_configs: AdminProviderConfigRow[];
+};
+
 export const OUTPUT_OPTIONS = [
   { id: "transcript", label: "Transcript" },
   { id: "clean_transcript", label: "Clean transcript" },

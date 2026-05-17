@@ -25,7 +25,13 @@ export function mapUpstreamError(
   const apiMsg = parsed?.flatMessage?.trim();
 
   if (status === 401) {
-    return { code: "unauthorized", status, message: "Session or proxy authentication failed.", detail };
+    return {
+      code: "unauthorized",
+      status,
+      message:
+        "The web proxy could not authenticate to the FeedFoundry API (401). On the Next.js host, set FEEDFOUNDRY_INTERNAL_API_KEY to the same value as FF_INTERNAL_API_KEY on the API service, and ensure FEEDFOUNDRY_API_BASE_URL points at the API.",
+      detail,
+    };
   }
   if (status === 403 && (d.includes("annual_archive") || d.includes("annual_access"))) {
     return {
