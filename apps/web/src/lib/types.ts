@@ -92,6 +92,8 @@ export type JobSummaryItem = {
   has_transcript?: boolean;
   has_agent_bundle?: boolean;
   has_hosted_manifest?: boolean;
+  has_export_bundle?: boolean;
+  has_visual_evidence?: boolean;
 };
 
 export type JobListResponse = {

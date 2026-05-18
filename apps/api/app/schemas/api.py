@@ -88,6 +88,8 @@ class JobSummaryItem(BaseModel):
     has_transcript: bool = False
     has_agent_bundle: bool = False
     has_hosted_manifest: bool = False
+    has_export_bundle: bool = False
+    has_visual_evidence: bool = False
 
 
 class JobListResponse(BaseModel):

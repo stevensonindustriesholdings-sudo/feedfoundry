@@ -104,13 +104,26 @@ def test_job_list_exposes_completed_youtube_source_and_output_presence(api_clien
     db_session.add(media)
     db_session.add(job)
     db_session.add(queue)
-    for output_type in (JobOutputType.RAW_TRANSCRIPT, JobOutputType.HOSTED_MANIFEST, JobOutputType.AGENT_BUNDLE):
+    for output_type in (
+        JobOutputType.RAW_TRANSCRIPT,
+        JobOutputType.HOSTED_MANIFEST,
+        JobOutputType.AGENT_BUNDLE,
+        JobOutputType.EXPORT_BUNDLE,
+    ):
+        payload = {"type": output_type.value}
+        if output_type == JobOutputType.HOSTED_MANIFEST:
+            payload["artifacts"] = {
+                "visual_evidence": {
+                    "filename": "visual_evidence.json",
+                    "storage_key": f"orgs/{org_id}/jobs/{job.id}/outputs/visual_evidence.json",
+                }
+            }
         db_session.add(
             JobOutput(
                 job_id=job.id,
                 organisation_id=org_id,
                 output_type=output_type,
-                json_payload={"type": output_type.value},
+                json_payload=payload,
                 storage_key=f"orgs/{org_id}/jobs/{job.id}/outputs/{output_type.value}.json",
             )
         )
@@ -131,6 +144,8 @@ def test_job_list_exposes_completed_youtube_source_and_output_presence(api_clien
     assert item["has_transcript"] is True
     assert item["has_hosted_manifest"] is True
     assert item["has_agent_bundle"] is True
+    assert item["has_export_bundle"] is True
+    assert item["has_visual_evidence"] is True
 
 
 def test_job_list_marks_agent_bundle_absent_when_no_output(api_client, db_session: Session) -> None:
@@ -179,6 +194,8 @@ def test_job_list_marks_agent_bundle_absent_when_no_output(api_client, db_sessio
     assert item["has_transcript"] is True
     assert item["has_hosted_manifest"] is False
     assert item["has_agent_bundle"] is False
+    assert item["has_export_bundle"] is False
+    assert item["has_visual_evidence"] is False
 
 
 def test_job_status_exposes_failure_reason_for_portal(api_client, db_session: Session) -> None:

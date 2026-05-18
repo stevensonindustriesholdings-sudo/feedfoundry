@@ -557,12 +557,14 @@ export default function PortalPage() {
                     {j.source_title ? <p className="mt-1 truncate text-xs text-zinc-300">{j.source_title}</p> : null}
                     {j.acquisition_error ? <p className="mt-1 text-xs text-red-300">{j.acquisition_error}</p> : null}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-[11px] text-zinc-500 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-[11px] text-zinc-500 sm:grid-cols-6">
                     <span>Duration {formatDuration(j.source_duration_seconds)}</span>
                     <span>Acq {j.acquisition_status ?? "—"}</span>
                     <span className={j.has_transcript ? "text-accent" : "text-zinc-600"}>Transcript {j.has_transcript ? "yes" : "no"}</span>
                     <span className={j.has_agent_bundle ? "text-accent" : "text-zinc-600"}>Agent {j.has_agent_bundle ? "yes" : "no"}</span>
                     <span className={j.has_hosted_manifest ? "text-accent" : "text-zinc-600"}>Manifest {j.has_hosted_manifest ? "yes" : "no"}</span>
+                    <span className={j.has_export_bundle ? "text-accent" : "text-zinc-600"}>Export {j.has_export_bundle ? "yes" : "no"}</span>
+                    <span className={j.has_visual_evidence ? "text-accent" : "text-zinc-600"}>Visual {j.has_visual_evidence ? "yes" : "no"}</span>
                   </div>
                 </div>
               </li>
@@ -608,7 +610,7 @@ export default function PortalPage() {
             </div>
           </div>
 
-          <div className="grid gap-2 text-xs sm:grid-cols-3">
+          <div className="grid gap-2 text-xs sm:grid-cols-5">
             <div className={outputExists(jobOutputs, ["raw_transcript", "clean_transcript"]) || selectedJobSummary?.has_transcript ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
               Transcript {outputExists(jobOutputs, ["raw_transcript", "clean_transcript"]) || selectedJobSummary?.has_transcript ? "exists" : "missing"}
             </div>
@@ -617,6 +619,12 @@ export default function PortalPage() {
             </div>
             <div className={outputExists(jobOutputs, ["hosted_manifest"]) || selectedJobSummary?.has_hosted_manifest ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
               Hosted manifest {outputExists(jobOutputs, ["hosted_manifest"]) || selectedJobSummary?.has_hosted_manifest ? "exists" : "missing"}
+            </div>
+            <div className={outputExists(jobOutputs, ["export_bundle"]) || selectedJobSummary?.has_export_bundle ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
+              Export bundle {outputExists(jobOutputs, ["export_bundle"]) || selectedJobSummary?.has_export_bundle ? "exists" : "missing"}
+            </div>
+            <div className={outputExists(jobOutputs, ["visual_evidence"]) || selectedJobSummary?.has_visual_evidence ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
+              Visual evidence {outputExists(jobOutputs, ["visual_evidence"]) || selectedJobSummary?.has_visual_evidence ? "exists" : "missing"}
             </div>
           </div>
 

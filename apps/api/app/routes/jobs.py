@@ -71,14 +71,21 @@ def _job_status_response(job: Job, visual_evidence: dict | None = None) -> JobSt
     )
 
 
-def _output_presence_for_job(session: Session, job_id: str) -> dict[str, bool]:
+def _output_presence_for_job(session: Session, *, organisation_id: str, job_id: str) -> dict[str, bool]:
     rows = session.exec(select(JobOutput.output_type).where(JobOutput.job_id == job_id)).all()
     output_types = {row.value for row in rows if isinstance(row, JobOutputType)}
+    visual_evidence = visual_evidence_summary_for_job(
+        session,
+        organisation_id=organisation_id,
+        job_id=job_id,
+    )
     return {
         "has_transcript": JobOutputType.RAW_TRANSCRIPT.value in output_types
         or JobOutputType.CLEAN_TRANSCRIPT.value in output_types,
         "has_agent_bundle": JobOutputType.AGENT_BUNDLE.value in output_types,
         "has_hosted_manifest": JobOutputType.HOSTED_MANIFEST.value in output_types,
+        "has_export_bundle": JobOutputType.EXPORT_BUNDLE.value in output_types,
+        "has_visual_evidence": bool(visual_evidence and visual_evidence.get("artifact_available")),
     }
 
 
@@ -141,7 +148,7 @@ def list_jobs(
                 source_duration_seconds=source_duration_seconds,
                 acquisition_status=yt_row.acquisition_status if yt_row else None,
                 acquisition_error=yt_row.acquisition_error if yt_row else None,
-                **_output_presence_for_job(session, job.id),
+                **_output_presence_for_job(session, organisation_id=organisation_id, job_id=job.id),
             )
         )
     return JobListResponse(jobs=items, total=int(total))
