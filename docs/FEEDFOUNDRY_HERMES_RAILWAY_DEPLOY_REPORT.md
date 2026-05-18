@@ -294,3 +294,161 @@ PY
   "notes": "Railway link/deploy/flag setup reached; migration blocked because local railway run could not resolve Railway private Postgres DNS."
 }
 ```
+
+## Update — Railway-internal migration and smoke checks
+
+Timestamp: 2026-05-18T19:46:15Z
+
+### Migration path used
+
+Hermes inspected the existing Railway `migrate` service and found it is a dedicated Dockerfile-based one-off service using the API image and this Railway start command:
+
+```bash
+sh -c 'cd /app/apps/api && PYTHONPATH=/app/apps/api alembic upgrade head && PYTHONPATH=/app/apps/api alembic current && echo "Migration complete" && sleep 10'
+```
+
+This runs inside Railway's project/private network, so it can resolve the private Postgres hostname. The service command uses direct `alembic upgrade head` from the container image rather than local `railway run`/`uv`; this avoided the local private-DNS failure. No downgrade/reset/drop/truncate/manual SQL command was run.
+
+Command used to trigger the migration service with the launch MVP code uploaded from the local branch:
+
+```bash
+railway up --service migrate --detach --message "Hermes launch MVP migration 010"
+```
+
+Migration deployment:
+
+```text
+Service: migrate
+Deployment ID: d9691779-461e-4ef1-8f27-dd11d213ed27
+Status: SUCCESS / STOPPED after completion
+```
+
+Migration log proof:
+
+```text
+INFO  [alembic.runtime.migration] Running upgrade 009_jobstatus_created_enum_label -> 010_launch_mvp_intake_fields, Launch MVP: media intake_kind + youtube_source_queue job/acquisition linkage.
+010_launch_mvp_intake_fields (head)
+Migration complete
+```
+
+Migration result: PASS.
+
+### API redeploy after migration
+
+The first OpenAPI route check after migration still showed the old route surface, so Hermes redeployed only the API service again from the launch MVP branch/local tree:
+
+```bash
+railway up --service api-v2-IQho --detach --message "Hermes launch MVP redeploy API after migration 010"
+```
+
+API deployment:
+
+```text
+Service: api-v2-IQho
+Deployment ID: afa1c35d-3883-4181-b512-3755031dcfbd
+Status: SUCCESS
+URL: https://api-v2-iqho-production.up.railway.app
+```
+
+Worker status remained deployed/successful:
+
+```text
+Service: worker-v2
+Deployment ID: a4a7a361-8c52-42bd-8752-42aef3cde445
+Status: SUCCESS
+```
+
+### Health result
+
+Command:
+
+```bash
+curl -fsS https://api-v2-iqho-production.up.railway.app/health
+```
+
+Result: PASS.
+
+Response summary:
+
+```json
+{"status":"ok","service":"feedfoundry-api"}
+```
+
+### Ready result
+
+Command:
+
+```bash
+curl -fsS https://api-v2-iqho-production.up.railway.app/ready
+```
+
+Result: PASS.
+
+Response summary:
+
+```text
+ready=true; database=connected; internal_api=ok; r2=ok; worker_settings=ok; openai_key_present=false
+```
+
+Note: `/ready` reports `environment="staging"` even though the linked Railway environment is named `production`.
+
+### OpenAPI route result
+
+Command:
+
+```bash
+curl -fsS https://api-v2-iqho-production.up.railway.app/openapi.json
+```
+
+Route checks:
+
+| Route | Present |
+|---|---|
+| `/v1/intake/youtube-video` | YES |
+| `/v1/intake/youtube-playlist` | YES |
+| `/v1/intake/upload` | YES |
+| `/v1/jobs` | YES |
+
+OpenAPI route result: PASS.
+
+### Remaining blockers / notes
+
+1. No deployment blocker remains for migration, health, ready, or route surface.
+2. The API `/ready` payload reports `environment="staging"` while Railway is linked to the `production` environment. Confirm whether this is intentional launch/staging config or should be renamed before customer-facing launch.
+3. `FF_YOUTUBE_SOURCE_ACQUISITION_LIVE` was not enabled.
+4. OpenAI enrichment was not enabled by Hermes.
+5. No authenticated POST smoke test was run because internal API credentials are required and secrets were not printed or guessed.
+6. Local untracked `apps/api/uv.lock` remains uncommitted and unrelated to the report commit.
+
+### Exact first live smoke test
+
+After Steve provides/exports an internal API token locally, run a non-live-acquisition YouTube stub intake. This uses a harmless public YouTube URL and should not enable live YouTube acquisition:
+
+```bash
+cd /Users/stevelee/Documents/feedfoundry
+export FEEDFOUNDRY_INTERNAL_API_TOKEN='<do-not-commit-or-paste-token>'
+curl -fsS -X POST 'https://api-v2-iqho-production.up.railway.app/v1/intake/youtube-video' \
+  -H "Authorization: Bearer ${FEEDFOUNDRY_INTERNAL_API_TOKEN}" \
+  -H 'X-Org-Id: org_smoke_feedfoundry_launch' \
+  -H 'Content-Type: application/json' \
+  --data '{"youtube_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","requested_outputs":["transcript"]}'
+```
+
+Do not enable `FF_YOUTUBE_SOURCE_ACQUISITION_LIVE` for this smoke test.
+
+### Updated Hermes proof block
+
+```json
+{
+  "hermes_acp_check": "PASS",
+  "hermes_smoke": "PASS",
+  "execution_lane": "hermes_terminal_deployment_operator",
+  "direct_openai_or_openrouter_used": false,
+  "agent_stack_or_skill_used": true,
+  "agent_stack_or_skill_name": "deployment_operator",
+  "proof_artifacts": [
+    "docs/FEEDFOUNDRY_HERMES_RAILWAY_DEPLOY_REPORT.md"
+  ],
+  "notes": "Migration completed via Railway migrate service inside private network; API health/ready/OpenAPI route checks passed."
+}
+```
