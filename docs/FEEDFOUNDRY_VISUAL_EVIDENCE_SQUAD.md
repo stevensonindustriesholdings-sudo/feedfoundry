@@ -78,6 +78,44 @@ This squad creates the first visual/evidence package for FeedFoundry without cal
   - approval-without-evidence block flag
   - reasons
 
+## Integration gate
+
+The package can be wired into the existing FeedFoundry agent bundle behind an explicit opt-in flag:
+
+```text
+FF_WORKER_VISUAL_EVIDENCE_ENABLED
+```
+
+Default is off. With the flag off, `run_feedfoundry_agent_bundle(...)` returns the existing v0.1 bundle shape and does not schedule `visual_evidence_squad`.
+
+With the flag on, the orchestrator:
+
+1. Builds a deterministic visual-evidence input from `FeedFoundryJobInput.transcript`, `visual_frames`, and hosted-manifest hints.
+2. Runs `run_visual_evidence_squad(...)` locally.
+3. Adds a `visual_evidence` status object to the bundle.
+4. Adds evidence fields to `hosted_manifest_hints`, `repository_manifest`, and `geo_freshness`.
+5. Appends `visual_evidence_squad` to `run.agents_scheduled`.
+
+The exposed evidence fields are:
+
+- `evidence_status`
+- `visual_evidence_available`
+- `transcript_evidence_available`
+- `unsupported_claim_count`
+- `human_review_required`
+- `final_evidence_confidence`
+- `visual_evidence_package_uri`
+- `visual_evidence_package_object` on the top-level bundle status only
+- `evidence_gate_reason`
+
+Evidence status behavior:
+
+- `ready`: visual evidence exists, transcript evidence exists, unsupported claim count is zero, human review is false, and final evidence confidence is at least `0.75`.
+- `needs_review`: weak/missing evidence, unsupported claims, human review required, or confidence below threshold.
+- `unavailable`: reserved schema value for future explicit media types where visual evidence is intentionally unavailable; current integration gates missing/weak evidence to `needs_review`.
+
+Hosted manifest / GEO / repository surfaces must not imply publishability when `evidence_status != "ready"`. They expose the evidence status and gate reason so later manifest/GEO publication layers can hold or escalate.
+
 ## Hard rules
 
 - Offline/local-first only.
@@ -93,5 +131,6 @@ From `apps/worker`:
 
 ```bash
 uv run python -m pytest tests/test_feedfoundry_visual_evidence_squad.py -q
+uv run python -m pytest tests/test_feedfoundry_visual_evidence_integration_gate.py -q
 uv run python scripts/run_feedfoundry_visual_evidence_squad.py
 ```

@@ -274,6 +274,51 @@ class GeoFreshnessOutput(StrictModel):
     live_research_requested: bool = False
 
 
+class EvidenceIntegrationStatus(StrictModel):
+    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    visual_evidence_available: bool
+    transcript_evidence_available: bool
+    unsupported_claim_count: int = Field(ge=0)
+    human_review_required: bool
+    final_evidence_confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence_package_uri: str | None = None
+    visual_evidence_package_object: dict[str, Any] | None = None
+    evidence_gate_reason: list[str] = Field(default_factory=list)
+
+
+class HostedManifestEvidenceHintsOutput(HostedManifestHintsOutput):
+    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    visual_evidence_available: bool
+    transcript_evidence_available: bool
+    unsupported_claim_count: int = Field(ge=0)
+    human_review_required: bool
+    final_evidence_confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence_package_uri: str | None = None
+    evidence_gate_reason: list[str] = Field(default_factory=list)
+
+
+class RepositoryManifestEvidenceOutput(RepositoryManifestOutput):
+    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    visual_evidence_available: bool
+    transcript_evidence_available: bool
+    unsupported_claim_count: int = Field(ge=0)
+    human_review_required: bool
+    final_evidence_confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence_package_uri: str | None = None
+    evidence_gate_reason: list[str] = Field(default_factory=list)
+
+
+class GeoFreshnessEvidenceOutput(GeoFreshnessOutput):
+    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    visual_evidence_available: bool
+    transcript_evidence_available: bool
+    unsupported_claim_count: int = Field(ge=0)
+    human_review_required: bool
+    final_evidence_confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence_package_uri: str | None = None
+    evidence_gate_reason: list[str] = Field(default_factory=list)
+
+
 class FFmpegFailureClassification(StrictModel):
     agent_id: Literal["ffmpeg_failure_classifier"] = "ffmpeg_failure_classifier"
     schema_version: str = "0.1"
@@ -303,3 +348,26 @@ class FeedFoundryAgentBundleOutput(StrictModel):
     judge: JudgeOutput
     geo_freshness: GeoFreshnessOutput
     ffmpeg_failure: FFmpegFailureClassification | None = None
+
+
+class FeedFoundryAgentBundleWithVisualEvidenceOutput(StrictModel):
+    run: BundleRunMeta
+    captain: CaptainOutput
+    transcript_steward: TranscriptStewardOutput
+    clean_transcript: CleanTranscriptOutput
+    chapters: ChapterArchitectOutput
+    clip_candidates: ClipScoutOutput
+    show_notes: ShowNotesOutput
+    metadata: MetadataCuratorOutput
+    ctas: CtaDesignerOutput
+    fact_sheet: FactSheetOutput
+    faqs: FaqAuthorOutput
+    hosted_manifest_hints: HostedManifestEvidenceHintsOutput
+    export_bundle_hints: ExportBundleHintsOutput
+    repository_manifest: RepositoryManifestEvidenceOutput
+    schema_org: SchemaOrgOutput
+    verification: VerifierOutput
+    judge: JudgeOutput
+    geo_freshness: GeoFreshnessEvidenceOutput
+    ffmpeg_failure: FFmpegFailureClassification | None = None
+    visual_evidence: EvidenceIntegrationStatus
