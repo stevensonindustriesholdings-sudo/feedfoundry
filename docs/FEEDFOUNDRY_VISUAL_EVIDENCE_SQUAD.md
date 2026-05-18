@@ -150,6 +150,30 @@ Evidence status behavior:
 
 Hosted manifest / GEO / repository surfaces must not imply publishability when `evidence_status != "ready"`. They expose the evidence status and gate reason so later manifest/GEO publication layers can hold or escalate.
 
+## Customer/admin evidence visibility
+
+Experiment 6 exposes persisted visual-evidence readiness without adding `visual_evidence` to the required `JobOutputType` DB enum.
+
+API/customer behavior:
+
+- `GET /v1/jobs/{job_id}/outputs/catalog` reads the job's persisted `hosted_manifest` JSON payload and adds a synthetic `visual_evidence` catalog entry when evidence fields/artifact references exist.
+- `GET /v1/jobs/{job_id}/outputs` reads the hosted manifest artifact entry and includes `visual_evidence` with a signed download URL only when `artifacts.visual_evidence.storage_key` exists.
+- `GET /v1/jobs/{job_id}` includes a compact `visual_evidence` summary derived from the hosted manifest row.
+- The synthetic `visual_evidence` output is not a `job_outputs.output_type` enum value and does not require a migration.
+
+Admin behavior:
+
+- `GET /v1/admin/jobs/{job_id}/evidence` reads evidence readiness from the hosted manifest output row, not from a `visual_evidence` DB enum row.
+- The admin evidence view returns `unavailable` when no manifest evidence summary exists.
+
+Public hosted manifest behavior:
+
+- `GET /v1/manifests/{creator_slug}/{asset_slug}.json` exposes public evidence status fields when available.
+- It strips `visual_evidence_package_object` so the raw internal evidence package is not public by default.
+- It may expose `visual_evidence_package_uri` only when the persisted artifact exists.
+
+`FF_WORKER_VISUAL_EVIDENCE_ENABLED` remains default off. With the flag off, no visual evidence artifact is written and these surfaces do not invent one.
+
 ## Hard rules
 
 - Offline/local-first only.
@@ -165,6 +189,7 @@ From `apps/worker`:
 
 ```bash
 uv run python -m pytest tests/test_feedfoundry_visual_evidence_squad.py -q
+uv run pytest tests/test_visual_evidence_visibility.py -q
 uv run python -m pytest tests/test_feedfoundry_visual_evidence_integration_gate.py tests/test_feedfoundry_agents_worker_integration.py tests/test_worker_hosted_manifest_agent_bundle.py -q
 uv run python scripts/run_feedfoundry_visual_evidence_squad.py
 ```

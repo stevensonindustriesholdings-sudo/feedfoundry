@@ -37,6 +37,7 @@ from app.services.credit_ledger import (
     reserve_processing_minutes,
 )
 from app.services import job_estimator
+from app.services.evidence_visibility import visual_evidence_summary_for_job
 from app.settings import get_settings
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -46,7 +47,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 _CANCELLABLE_STATUSES = {JobStatus.UPLOADED, JobStatus.QUEUED, JobStatus.PROCESSING}
 
 
-def _job_status_response(job: Job) -> JobStatusResponse:
+def _job_status_response(job: Job, visual_evidence: dict | None = None) -> JobStatusResponse:
     """Build a canonical job status response (PM canonical + deprecated *_credits aliases)."""
     est = job.estimated_processing_minutes
     resv = job.reserved_processing_minutes
@@ -60,6 +61,7 @@ def _job_status_response(job: Job) -> JobStatusResponse:
         reserved_processing_minutes=resv,
         actual_processing_minutes_charged=charged,
         estimated_processing_hours=processing_minutes_to_approx_hours(est),
+        visual_evidence=visual_evidence,
         estimated_credits=est,
         reserved_credits=resv,
         actual_credits_so_far=charged,
@@ -215,7 +217,12 @@ def get_job(
             code="job_not_found",
             message="Job not found for this organisation.",
         )
-    return _job_status_response(job)
+    visual_evidence = visual_evidence_summary_for_job(
+        session,
+        organisation_id=organisation_id,
+        job_id=job_id,
+    )
+    return _job_status_response(job, visual_evidence=visual_evidence)
 
 
 @router.post("/{job_id}/cancel", response_model=JobStatusResponse)

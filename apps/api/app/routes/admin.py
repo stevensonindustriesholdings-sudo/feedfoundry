@@ -15,6 +15,7 @@ from app.http_errors import problem
 from app.models import Job, JobOutput, JobOutputType, ProviderConfig, YoutubeSourceQueue
 from app.services import audit
 from app.services import storage as storage_service
+from app.services.evidence_visibility import visual_evidence_summary_for_job
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -93,6 +94,31 @@ def upsert_provider_config(
         session.add(row)
     session.commit()
     return {"ok": True}
+
+
+@router.get("/jobs/{job_id}/evidence")
+def admin_get_job_evidence(
+    job_id: str,
+    _: None = Depends(verify_internal_key),
+    session: Session = Depends(get_session),
+):
+    """Read visual-evidence readiness from hosted manifest output entries, not a DB enum row."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Not found.",
+        )
+    evidence = visual_evidence_summary_for_job(
+        session,
+        organisation_id=job.organisation_id,
+        job_id=job_id,
+    )
+    if not evidence:
+        evidence = {"evidence_status": "unavailable", "artifact_available": False, "visual_evidence_package_uri": None}
+    audit.log_admin_event("admin_get_job_evidence", {"job_id": job_id, "evidence_status": evidence.get("evidence_status")})
+    return evidence
 
 
 @router.get("/jobs/{job_id}/agent-bundle")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -63,6 +63,7 @@ class JobStatusResponse(BaseModel):
     reserved_processing_minutes: Optional[int] = None
     actual_processing_minutes_charged: Optional[int] = None
     estimated_processing_hours: Optional[float] = None
+    visual_evidence: Optional[dict[str, Any]] = None
     # Deprecated legacy aliases preserved one release for older clients.
     estimated_credits: Optional[int] = Field(default=None, deprecated=True)
     reserved_credits: Optional[int] = Field(default=None, deprecated=True)
@@ -88,6 +89,8 @@ class OutputItemResponse(BaseModel):
     title: str
     format: str
     download_url: str
+    evidence_status: Optional[str] = None
+    artifact_available: Optional[bool] = None
 
 
 class JobOutputsResponse(BaseModel):
@@ -103,6 +106,10 @@ class OutputCatalogEntryResponse(BaseModel):
     ready: bool
     format: Optional[str] = None
     download_url: Optional[str] = None
+    evidence_status: Optional[str] = None
+    artifact_available: Optional[bool] = None
+    human_review_required: Optional[bool] = None
+    final_evidence_confidence: Optional[float] = None
 
 
 class JobOutputsCatalogResponse(BaseModel):

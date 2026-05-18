@@ -17,6 +17,11 @@ from app.schemas.api import (
     OutputItemResponse,
 )
 from app.services import storage as storage_service
+from app.services.evidence_visibility import (
+    VISUAL_EVIDENCE_OUTPUT_TYPE,
+    hosted_manifest_for_job,
+    visual_evidence_summary_from_manifest,
+)
 from app.settings import get_settings
 
 router = APIRouter(tags=["outputs"])
@@ -34,6 +39,8 @@ _OUTPUT_TITLES: dict[str, str] = {
     "hosted_manifest": "Hosted Manifest",
     "export_bundle": "Export bundle",
     "media_inspection": "Media inspection",
+    "agent_bundle": "Agent bundle",
+    "visual_evidence": "Visual evidence",
 }
 
 _CATALOG_ORDER: list[JobOutputType] = [
@@ -62,6 +69,13 @@ def _format_for_output(out: JobOutput) -> str:
     if out.storage_key:
         return "json"
     return "markdown"
+
+
+def _download_for_storage_key(*, storage_key: str) -> str:
+    return storage_service.presign_get_for_key(
+        storage_key=storage_key,
+        download_filename=os.path.basename(storage_key),
+    )
 
 
 def _download_for_row(
@@ -124,6 +138,19 @@ def list_job_outputs(
                 ),
             )
         )
+    manifest_row = hosted_manifest_for_job(session, organisation_id=organisation_id, job_id=job_id)
+    evidence = visual_evidence_summary_from_manifest(manifest_row.json_payload if manifest_row else None)
+    if evidence and evidence.get("artifact_available") and evidence.get("visual_evidence_package_uri"):
+        items.append(
+            OutputItemResponse(
+                type=VISUAL_EVIDENCE_OUTPUT_TYPE,
+                title=_OUTPUT_TITLES[VISUAL_EVIDENCE_OUTPUT_TYPE],
+                format="json",
+                download_url=_download_for_storage_key(storage_key=evidence["visual_evidence_package_uri"]),
+                evidence_status=evidence.get("evidence_status"),
+                artifact_available=True,
+            )
+        )
     return JobOutputsResponse(job_id=job_id, outputs=items)
 
 
@@ -139,6 +166,8 @@ def catalog_job_outputs(
     stmt = select(JobOutput).where(JobOutput.job_id == job_id, JobOutput.organisation_id == organisation_id)
     rows = {r.output_type: r for r in session.exec(stmt).all()}
     entries: list[OutputCatalogEntryResponse] = []
+    manifest_row = rows.get(JobOutputType.HOSTED_MANIFEST)
+    evidence = visual_evidence_summary_from_manifest(manifest_row.json_payload if manifest_row else None)
     for ot in _CATALOG_ORDER:
         row = rows.get(ot)
         if row:
@@ -163,4 +192,21 @@ def catalog_job_outputs(
                     download_url=None,
                 )
             )
+    if evidence:
+        uri = evidence.get("visual_evidence_package_uri")
+        artifact_available = bool(evidence.get("artifact_available") and uri)
+        download_url = _download_for_storage_key(storage_key=str(uri)) if artifact_available else None
+        entries.append(
+            OutputCatalogEntryResponse(
+                output_type=VISUAL_EVIDENCE_OUTPUT_TYPE,
+                title=_OUTPUT_TITLES[VISUAL_EVIDENCE_OUTPUT_TYPE],
+                ready=artifact_available,
+                format="json" if artifact_available else None,
+                download_url=download_url,
+                evidence_status=evidence.get("evidence_status"),
+                artifact_available=artifact_available,
+                human_review_required=evidence.get("human_review_required"),
+                final_evidence_confidence=evidence.get("final_evidence_confidence"),
+            )
+        )
     return JobOutputsCatalogResponse(job_id=job_id, outputs=entries)
