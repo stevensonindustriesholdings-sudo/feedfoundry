@@ -29,6 +29,8 @@ $ hermes acp --check
 # PASS: "Hermes ACP check OK"
 ```
 
+**FeedFoundry repo (post-capture):** for agent-skill work in **this** codebase, prefer **`hermes acp`** and CEO scripts under **`stevenson-skunkworks-ceo`** when checked out locally — Hermes skill development benefits; **CI for FeedFoundry does not depend on Hermes**.
+
 **Railway / Stripe / prod:** no mutations performed (read-only inspection only).
 
 ## 3) Phase 1 inspection summary

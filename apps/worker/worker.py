@@ -181,6 +181,55 @@ def _advance(session: Session, job: Job, status: JobStatus, stage: str, progress
     session.commit()
 
 
+def _refresh_hosted_manifest_for_agent_bundle(
+    *,
+    session: Session,
+    job: Job,
+    media: MediaAsset,
+    transcript_payload: dict,
+    media_inspection_payload: dict | None,
+    planned_types: list[str],
+    agent_bundle_storage_key: str,
+    out_bucket: str,
+    settings: object,
+) -> None:
+    """Rebuild ``hosted_manifest.json`` after ``agent_bundle.json`` so ``outputs_available`` matches storage."""
+    out_avail = list(planned_types)
+    out_avail.insert(out_avail.index(JobOutputType.EXPORT_BUNDLE.value), JobOutputType.AGENT_BUNDLE.value)
+    df = derived_from_for_transcript(transcript_payload)
+    payload = build_hosted_manifest_from_transcript(
+        transcript=transcript_payload,
+        media_inspection=media_inspection_payload,
+        creator_slug=media.creator_slug or "",
+        asset_slug=media.asset_slug or "",
+        original_basename=media.original_filename,
+        outputs_available=out_avail,
+        derived_from=df,
+    )
+    payload["artifacts"] = {
+        "agent_bundle": {
+            "filename": "agent_bundle.json",
+            "storage_key": agent_bundle_storage_key,
+        }
+    }
+    stmt = select(JobOutput).where(
+        JobOutput.job_id == job.id,
+        JobOutput.output_type == JobOutputType.HOSTED_MANIFEST,
+    )
+    row = session.exec(stmt).first()
+    if row is None or not row.storage_key:
+        log.warning(
+            "hosted_manifest_refresh_skipped job_id=%s reason=no_hosted_manifest_row_or_key",
+            job.id,
+        )
+        return
+    row.json_payload = payload
+    session.add(row)
+    key = row.storage_key
+    body = json.dumps(payload, indent=2).encode("utf-8")
+    put_json_bytes(bucket=out_bucket, key=key, body=body, settings=settings)
+
+
 def _write_stub_outputs(
     session: Session,
     job: Job,
@@ -308,7 +357,7 @@ def _write_stub_outputs(
             )
         )
 
-    maybe_write_agent_bundle(
+    agent_bundle_key = maybe_write_agent_bundle(
         session=session,
         job=job,
         media=media,
@@ -318,6 +367,18 @@ def _write_stub_outputs(
         out_bucket=out_bucket,
         settings=settings,
     )
+    if agent_bundle_key and transcript_payload is not None:
+        _refresh_hosted_manifest_for_agent_bundle(
+            session=session,
+            job=job,
+            media=media,
+            transcript_payload=transcript_payload,
+            media_inspection_payload=media_inspection_payload,
+            planned_types=planned_types,
+            agent_bundle_storage_key=agent_bundle_key,
+            out_bucket=out_bucket,
+            settings=settings,
+        )
 
     if media.creator_slug:
         manifest_doc["creator_slug"] = media.creator_slug

@@ -76,7 +76,7 @@ def test_maybe_write_agent_bundle_skips_when_flag_off(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(bundle_integration, "run_feedfoundry_agent_bundle", _boom)
     job, media = _job_and_media()
-    bundle_integration.maybe_write_agent_bundle(
+    ret = bundle_integration.maybe_write_agent_bundle(
         session=MagicMock(),
         job=job,
         media=media,
@@ -86,6 +86,7 @@ def test_maybe_write_agent_bundle_skips_when_flag_off(monkeypatch: pytest.Monkey
         out_bucket="b",
         settings=MagicMock(),
     )
+    assert ret is None
     assert called == []
 
 
@@ -109,7 +110,7 @@ def test_maybe_write_agent_bundle_calls_orchestrator(monkeypatch: pytest.MonkeyP
     session = MagicMock()
     job, media = _job_and_media()
     manifest: dict = {"outputs": []}
-    bundle_integration.maybe_write_agent_bundle(
+    key = bundle_integration.maybe_write_agent_bundle(
         session=session,
         job=job,
         media=media,
@@ -119,6 +120,8 @@ def test_maybe_write_agent_bundle_calls_orchestrator(monkeypatch: pytest.MonkeyP
         out_bucket="bucket",
         settings=MagicMock(),
     )
+    assert key is not None
+    assert key.endswith("/agent_bundle.json")
     assert captured == [job.id]
     assert len(uploaded) == 1
     assert uploaded[0][0].endswith("/agent_bundle.json")

@@ -46,8 +46,13 @@ This document defines the **15-agent** processing team for FeedFoundry’s creat
 ## Integration stance (v0.1)
 
 - **Worker:** optional hook after transcript + FFmpeg-derived inspection and the main JSON output pass (same `_write_stub_outputs` transaction as manifest/export index). Enable with **`FF_FEEDFOUNDRY_AGENT_BUNDLE_ENABLED`** (`1` / `true` / `yes`; **default off**). When off, behaviour matches the pre-wire worker. When on, the worker writes **`agent_bundle.json`** (`JobOutputType.AGENT_BUNDLE`) via `run_feedfoundry_agent_bundle` before processing minutes are settled; bundle failures raise `agent_bundle_failed` and **do not debit** reserved minutes (settlement runs only after a successful output pass).
-- **API:** unchanged; no new routes required for the bundle.
+- **Hosted manifest truth:** `hosted_manifest.json` **`outputs_available`** (and optional **`artifacts.agent_bundle`**) list **`agent_bundle`** only after **`agent_bundle.json`** is **successfully uploaded** and the `job_outputs` row exists — not merely because the bundle feature flag is enabled. If the bundle step is skipped (no transcript segments) or fails before upload, the public manifest does not advertise the bundle.
+- **API (operator, optional):** `GET /v1/admin/jobs/{job_id}/agent-bundle` returns parsed JSON from object storage when **`FF_AGENT_BUNDLE_ADMIN_API_ENABLED`** is truthy **and** `FF_INTERNAL_API_KEY` auth is valid (same internal-key pattern as other `/v1/admin/*` routes). Returns **404** when the flag is off, the row is missing, or the blob is absent. No customer-facing route; no ledger changes.
 - **Tests:** contract tests lock JSON shape for CI.
+
+## Hermes / local agent development
+
+For AI agent work **in this repository**, prefer **native Hermes ACP** (`hermes acp`) and CEO automation scripts under **`stevenson-skunkworks-ceo`** when that repo is present on the machine — so Hermes skill iteration and ACP tooling stay aligned. This is a **local developer convenience** only; **CI does not require Hermes**.
 
 ## Versioning
 

@@ -117,21 +117,23 @@ def maybe_write_agent_bundle(
     manifest_doc: dict[str, Any],
     out_bucket: str,
     settings: Any,
-) -> None:
+) -> str | None:
     """When ``FF_FEEDFOUNDRY_AGENT_BUNDLE_ENABLED`` is true, write ``agent_bundle.json`` and register output.
 
     Runs **before** processing-minute settlement. On failure raises ``JobProcessingFailure`` so the job
     fails without debiting reserved minutes (same as other pipeline failures).
+
+    Returns the **outputs** storage key for ``agent_bundle.json`` after a successful upload, else ``None``.
     """
     if not feedfoundry_agent_bundle_enabled():
-        return
+        return None
     if not transcript_payload:
         log.info("agent_bundle_skipped job_id=%s reason=no_transcript", job.id)
-        return
+        return None
     segs = transcript_payload.get("segments") or []
     if not segs:
         log.info("agent_bundle_skipped job_id=%s reason=no_transcript_segments", job.id)
-        return
+        return None
 
     job_input = build_feedfoundry_job_input_from_worker(
         job=job,
@@ -171,3 +173,4 @@ def maybe_write_agent_bundle(
         )
     )
     log.info("agent_bundle_written job_id=%s storage_key=%s", job.id, key)
+    return key

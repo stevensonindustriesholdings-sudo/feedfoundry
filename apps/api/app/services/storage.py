@@ -179,6 +179,21 @@ def head_object_exists(*, bucket: str, key: str, settings=None) -> bool:
         raise
 
 
+def get_object_bytes(*, bucket: str, key: str, settings=None) -> Optional[bytes]:
+    """Return object body bytes or ``None`` if missing / storage not configured."""
+    client = _s3_client(settings)
+    if client is None:
+        return None
+    try:
+        resp = client.get_object(Bucket=bucket, Key=key)
+        return resp["Body"].read()
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return None
+        raise
+
+
 def put_json_bytes(
     *,
     bucket: str,

@@ -130,6 +130,21 @@
         "container_format": { "type": ["string", "null"] },
         "file_size_bytes": { "type": ["integer", "null"] }
       }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent_bundle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filename", "storage_key"],
+          "properties": {
+            "filename": { "type": "string" },
+            "storage_key": { "type": "string" }
+          }
+        }
+      }
     }
   }
 }

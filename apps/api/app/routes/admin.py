@@ -1,13 +1,31 @@
+from __future__ import annotations
+
+import json
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import desc
 from sqlmodel import Session, select
 
 from app.auth import verify_internal_key
+from app.config.env_validation import _stripped
 from app.db import get_session
-from app.models import Job, ProviderConfig, YoutubeSourceQueue
+from app.http_errors import problem
+from app.models import Job, JobOutput, JobOutputType, ProviderConfig, YoutubeSourceQueue
 from app.services import audit
+from app.services import storage as storage_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _agent_bundle_admin_api_enabled() -> bool:
+    return _stripped(os.environ.get("FF_AGENT_BUNDLE_ADMIN_API_ENABLED", "")).lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 @router.get("/youtube-queue")
@@ -75,3 +93,62 @@ def upsert_provider_config(
         session.add(row)
     session.commit()
     return {"ok": True}
+
+
+@router.get("/jobs/{job_id}/agent-bundle")
+def admin_get_agent_bundle_json(
+    job_id: str,
+    _: None = Depends(verify_internal_key),
+    session: Session = Depends(get_session),
+):
+    """Read-only operator access to persisted ``agent_bundle.json`` (object storage)."""
+    if not _agent_bundle_admin_api_enabled():
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Not found.",
+        )
+    job = session.get(Job, job_id)
+    if not job:
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Not found.",
+        )
+    stmt = select(JobOutput).where(
+        JobOutput.job_id == job_id,
+        JobOutput.output_type == JobOutputType.AGENT_BUNDLE,
+    )
+    row = session.exec(stmt).first()
+    if not row or not row.storage_key:
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Not found.",
+        )
+    if not storage_service.storage_client_ready():
+        raise problem(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="storage_not_configured",
+            message="Object storage is not configured.",
+        )
+    raw = storage_service.get_object_bytes(
+        bucket=storage_service.bucket_for_outputs(),
+        key=row.storage_key,
+    )
+    if raw is None:
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Not found.",
+        )
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise problem(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Not found.",
+        )
+    audit.log_admin_event("admin_get_agent_bundle_json", {"job_id": job_id})
+    return JSONResponse(content=data)
