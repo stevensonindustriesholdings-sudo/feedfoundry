@@ -18,7 +18,7 @@ from app.models import MediaAsset, MediaAssetStatus, MediaType, YoutubeSourceQue
 from app.routes.jobs import create_job
 from app.routes.youtube_queue import YoutubeQueueEnqueueRequest
 from app.schemas.api import CreateJobRequest, CreateJobResponse
-from app.services.organisation_guard import ensure_org_row_for_internal_routes
+from app.services.organisation_guard import OrganisationNotFound, ensure_org_row_for_internal_routes
 
 router = APIRouter(prefix="/intake", tags=["intake"])
 
@@ -60,6 +60,22 @@ def _youtube_queue_schema_unavailable(exc: BaseException):
             ),
         ) from exc
     raise exc
+
+
+def _raise_organisation_not_found() -> None:
+    raise problem(
+        status_code=status.HTTP_404_NOT_FOUND,
+        code="organisation_not_found",
+        message="Organisation does not exist for this request.",
+        fields=["X-Org-Id"],
+    )
+
+
+def _ensure_known_organisation(session: Session, organisation_id: str) -> None:
+    try:
+        ensure_org_row_for_internal_routes(session, organisation_id)
+    except OrganisationNotFound:
+        _raise_organisation_not_found()
 
 
 class IntakeYoutubeVideoRequest(BaseModel):
@@ -121,7 +137,7 @@ def intake_youtube_video(
             message=str(e),
         ) from e
 
-    ensure_org_row_for_internal_routes(session, organisation_id)
+    _ensure_known_organisation(session, organisation_id)
 
     row = YoutubeSourceQueue(
         organisation_id=organisation_id,
@@ -208,7 +224,7 @@ def intake_youtube_playlist(
             message="URL must be a public youtube.com link with a list= playlist id.",
         )
 
-    ensure_org_row_for_internal_routes(session, organisation_id)
+    _ensure_known_organisation(session, organisation_id)
 
     row = YoutubeSourceQueue(
         organisation_id=organisation_id,
@@ -237,7 +253,7 @@ def intake_upload_then_job(
     session: Session = Depends(get_session),
 ) -> CreateJobResponse:
     """Register job for an uploaded asset (after presign PUT). Optional ``duration_seconds`` hint."""
-    ensure_org_row_for_internal_routes(session, organisation_id)
+    _ensure_known_organisation(session, organisation_id)
     ma = session.get(MediaAsset, body.media_asset_id)
     if ma and body.duration_seconds is not None:
         ma.duration_seconds = body.duration_seconds

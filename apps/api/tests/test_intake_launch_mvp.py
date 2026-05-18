@@ -56,6 +56,25 @@ def test_intake_youtube_video_auth_required(api_client, db_session: Session, mon
     assert r.json()["code"] == "unauthorized"
 
 
+def test_intake_youtube_video_missing_org_returns_structured_404(api_client, db_session: Session, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED", "1")
+    monkeypatch.setenv("FF_YOUTUBE_SOURCE_ACQUISITION_LIVE", "1")
+    r = api_client.post(
+        "/v1/intake/youtube-video",
+        headers={"Authorization": "Bearer test-internal-key", "X-Org-Id": "org_missing_intake"},
+        json={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "requested_outputs": ["transcript"]},
+    )
+    assert r.status_code == 404, r.text
+    body = r.json()
+    assert body == {
+        "code": "organisation_not_found",
+        "message": "Organisation does not exist for this request.",
+        "fields": ["X-Org-Id"],
+    }
+    assert db_session.exec(select(Job).where(Job.organisation_id == "org_missing_intake")).all() == []
+    assert db_session.exec(select(YoutubeSourceQueue).where(YoutubeSourceQueue.organisation_id == "org_missing_intake")).all() == []
+
+
 def test_intake_youtube_video_creates_stub_media_and_job(api_client, db_session: Session, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED", "1")
     org_id = "org_intake_vid"

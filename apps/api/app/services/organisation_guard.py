@@ -10,6 +10,10 @@ from app.settings import get_settings
 _DEV_ORG_ID = "org_dev_demo"
 
 
+class OrganisationNotFound(LookupError):
+    """Raised when a request references an organisation that is not present."""
+
+
 def ensure_org_row_for_internal_routes(session: Session, organisation_id: str) -> None:
     """
     credit_wallets and media_assets FK to organisations.id.
@@ -19,15 +23,15 @@ def ensure_org_row_for_internal_routes(session: Session, organisation_id: str) -
     if session.get(Organisation, organisation_id) is not None:
         return
     env = (get_settings().app_env or "").strip().lower()
-    if env in ("production", "prod"):
-        return
-    if organisation_id != _DEV_ORG_ID:
-        return
-    session.add(
-        Organisation(
-            id=_DEV_ORG_ID,
-            name="FeedFoundry Dev Org",
-            slug="demo-creator",
+    if env not in ("production", "prod") and organisation_id == _DEV_ORG_ID:
+        session.add(
+            Organisation(
+                id=_DEV_ORG_ID,
+                name="FeedFoundry Dev Org",
+                slug="demo-creator",
+            )
         )
-    )
-    session.flush()
+        session.flush()
+        return
+
+    raise OrganisationNotFound(organisation_id)

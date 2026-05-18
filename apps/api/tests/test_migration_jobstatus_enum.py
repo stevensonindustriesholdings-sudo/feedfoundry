@@ -23,3 +23,12 @@ def test_009_adds_created_label_idempotently():
     assert "pg_catalog.pg_enum" in body
     assert "enumlabel = 'created'" in body
     assert "ALTER TYPE jobstatus ADD VALUE 'created'" in body
+
+
+def test_012_seeds_smoke_org_idempotently():
+    body = _read_migration("012_seed_smoke_org")
+    assert "org_smoke_feedfoundry_launch" in body
+    assert "ON CONFLICT (id) DO NOTHING" in body
+    assert "ON CONFLICT (organisation_id) DO NOTHING" in body
+    assert "annual_access" in body
+    assert "credit_wallets" in body
