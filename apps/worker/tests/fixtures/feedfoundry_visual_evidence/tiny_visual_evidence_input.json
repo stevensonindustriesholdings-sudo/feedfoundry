@@ -1,0 +1,52 @@
+{
+  "media_id": "media_demo_001",
+  "keyframes": [
+    {
+      "keyframe_id": "kf_0001",
+      "timestamp_seconds": 12.5,
+      "frame_uri": "artifacts/media_demo_001/keyframes/kf_0001.jpg",
+      "visual_label": "host holding a blue product box beside the FeedFoundry logo slide",
+      "ocr_text": "Launch checklist: archive, clips, FAQ",
+      "ocr_confidence": 0.82,
+      "entities": [
+        { "entity_type": "product", "label": "blue product box", "confidence": 0.74 },
+        { "entity_type": "logo", "label": "FeedFoundry", "confidence": 0.88 },
+        { "entity_type": "person", "label": "host", "confidence": 0.8 }
+      ]
+    },
+    {
+      "keyframe_id": "kf_0002",
+      "timestamp_seconds": 44.0,
+      "frame_uri": "artifacts/media_demo_001/keyframes/kf_0002.jpg",
+      "visual_label": "low contrast slide, maybe a chart",
+      "ocr_text": "",
+      "ocr_confidence": 0.18,
+      "entities": [
+        { "entity_type": "object", "label": "chart", "confidence": 0.41, "risk_notes": ["low contrast placeholder"] }
+      ]
+    }
+  ],
+  "transcript_chunks": [
+    {
+      "chunk_id": "tc_001",
+      "start_seconds": 10.0,
+      "end_seconds": 18.0,
+      "text": "This launch checklist covers archive clips and FAQs for the product demo."
+    },
+    {
+      "chunk_id": "tc_002",
+      "start_seconds": 38.0,
+      "end_seconds": 46.0,
+      "text": "We briefly show a chart, but the exact revenue claim is not stated here."
+    }
+  ],
+  "claims": [
+    { "claim_text": "The video covers archive clips and FAQs.", "source": "generated" },
+    { "claim_text": "The product generated $2M in revenue.", "source": "generated" },
+    { "claim_text": "A FeedFoundry logo appears on screen.", "source": "visual" }
+  ],
+  "hosted_manifest_candidate": {
+    "publishability_gate": "approve",
+    "title": "Launch checklist demo"
+  }
+}
