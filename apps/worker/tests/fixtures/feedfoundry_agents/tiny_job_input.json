@@ -1,0 +1,25 @@
+{
+  "job_id": "job_fixture_001",
+  "organisation_id": "org_fixture_001",
+  "media_asset_id": "ma_fixture_001",
+  "creator_slug": "fixture-creator",
+  "asset_slug": "fixture-episode-001",
+  "original_basename": "fixture_episode.mp4",
+  "transcript": {
+    "schema_version": "1.0",
+    "segments": [
+      { "start": 0.0, "end": 2.5, "text": "Welcome to the demo episode." },
+      { "start": 2.5, "end": 6.0, "text": "We cover archive metadata and transcripts only." }
+    ]
+  },
+  "visual_frames": [
+    { "t_seconds": 0.5, "label": "opening", "frame_uri": null }
+  ],
+  "product_context": {
+    "show_name": "Fixture Demo Show",
+    "niche": "creator_archive_intelligence",
+    "primary_topics": ["transcript", "chapters", "hosted_manifest"]
+  },
+  "media_meta": { "duration_seconds": 120.0, "container_format": "mp4" },
+  "ffmpeg_failure": null
+}

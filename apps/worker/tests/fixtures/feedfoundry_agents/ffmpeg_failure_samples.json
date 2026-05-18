@@ -1,0 +1,22 @@
+{
+  "samples": [
+    {
+      "return_code": 1,
+      "stderr_snippet": "ffmpeg: broken pipe",
+      "command_summary": "ffmpeg -y -i /tmp/in.mp4 /tmp/out.wav",
+      "stage": "audio_extract"
+    },
+    {
+      "return_code": 183,
+      "stderr_snippet": "Invalid data found when processing input",
+      "command_summary": "ffmpeg -i broken.bin /tmp/out.wav",
+      "stage": "audio_extract"
+    },
+    {
+      "return_code": 254,
+      "stderr_snippet": "No such file or directory",
+      "command_summary": "ffmpeg -i /missing/in.mp4 /tmp/out.wav",
+      "stage": "audio_extract"
+    }
+  ]
+}

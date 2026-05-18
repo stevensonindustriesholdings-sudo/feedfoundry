@@ -59,6 +59,10 @@ Thumbs.db
 tmp/
 temp/
 
+# Local agent bundle CLI output
+artifacts/feedfoundry-agent-bundle/
+apps/worker/artifacts/
+
 # Sample-pack batch smoke (local artifacts)
 sample-pack-report.md
 sample-pack-report.csv

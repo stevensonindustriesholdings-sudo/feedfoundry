@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "segments": [
+    { "start": 0.0, "end": 2.5, "text": "Welcome to the demo episode." },
+    { "start": 2.5, "end": 6.0, "text": "We cover archive metadata and transcripts only." }
+  ]
+}

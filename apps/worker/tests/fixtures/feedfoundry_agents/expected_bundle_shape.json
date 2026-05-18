@@ -1,0 +1,24 @@
+{
+  "description": "Expected top-level keys on FeedFoundryAgentBundleOutput (v0.1 contract).",
+  "top_level_keys": [
+    "run",
+    "captain",
+    "transcript_steward",
+    "clean_transcript",
+    "chapters",
+    "clip_candidates",
+    "show_notes",
+    "metadata",
+    "ctas",
+    "fact_sheet",
+    "faqs",
+    "hosted_manifest_hints",
+    "export_bundle_hints",
+    "repository_manifest",
+    "schema_org",
+    "verification",
+    "judge",
+    "geo_freshness",
+    "ffmpeg_failure"
+  ]
+}
