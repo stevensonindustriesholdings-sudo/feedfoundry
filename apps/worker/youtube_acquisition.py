@@ -21,12 +21,14 @@ _VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([a-zA-Z0-9_-]{11})"
 
 @dataclass
 class YouTubeAcquisitionResult:
-    local_media_path: str
+    local_media_path: str | None
     filename: str
     content_type: str = "video/mp4"
     title: str | None = None
     duration_seconds: float | None = None
     transcript_payload: dict[str, Any] | None = None
+    media_acquired: bool = True
+    nonfatal_error: str | None = None
 
 
 class YouTubeAcquisitionError(RuntimeError):
@@ -130,6 +132,10 @@ def acquire_youtube_source(*, youtube_url: str, work_dir: str) -> YouTubeAcquisi
     if max_bytes > 0:
         opts["max_filesize"] = max_bytes
 
+    title = "YouTube source"
+    duration = None
+    transcript_payload = _fetch_public_transcript(youtube_url)
+
     try:
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(youtube_url, download=True)
@@ -149,20 +155,53 @@ def acquire_youtube_source(*, youtube_url: str, work_dir: str) -> YouTubeAcquisi
             if not local_path or not os.path.exists(local_path):
                 raise YouTubeAcquisitionError("youtube_download_missing_file", "yt-dlp completed without a staged media file.")
             title = str(info.get("title") or "YouTube source") if isinstance(info, dict) else "YouTube source"
-            duration = None
             if isinstance(info, dict) and info.get("duration") is not None:
                 try:
                     duration = float(info["duration"])
                 except (TypeError, ValueError):
                     duration = None
-    except YouTubeAcquisitionError:
+    except YouTubeAcquisitionError as exc:
+        if transcript_payload:
+            return YouTubeAcquisitionResult(
+                local_media_path=None,
+                filename="youtube_transcript.json",
+                content_type="application/json",
+                title=title,
+                duration_seconds=duration,
+                transcript_payload=transcript_payload,
+                media_acquired=False,
+                nonfatal_error=exc.message[:1000],
+            )
         raise
     except DownloadError as exc:
-        raise YouTubeAcquisitionError("youtube_download_failed", str(exc)[:1000]) from exc
+        msg = str(exc)[:1000]
+        if transcript_payload:
+            return YouTubeAcquisitionResult(
+                local_media_path=None,
+                filename="youtube_transcript.json",
+                content_type="application/json",
+                title=title,
+                duration_seconds=duration,
+                transcript_payload=transcript_payload,
+                media_acquired=False,
+                nonfatal_error=msg,
+            )
+        raise YouTubeAcquisitionError("youtube_download_failed", msg) from exc
     except Exception as exc:
-        raise YouTubeAcquisitionError("youtube_acquisition_failed", str(exc)[:1000]) from exc
+        msg = str(exc)[:1000]
+        if transcript_payload:
+            return YouTubeAcquisitionResult(
+                local_media_path=None,
+                filename="youtube_transcript.json",
+                content_type="application/json",
+                title=title,
+                duration_seconds=duration,
+                transcript_payload=transcript_payload,
+                media_acquired=False,
+                nonfatal_error=msg,
+            )
+        raise YouTubeAcquisitionError("youtube_acquisition_failed", msg) from exc
 
-    transcript_payload = _fetch_public_transcript(youtube_url)
     filename = Path(local_path).name or "youtube_source.mp4"
     return YouTubeAcquisitionResult(
         local_media_path=local_path,
@@ -171,4 +210,5 @@ def acquire_youtube_source(*, youtube_url: str, work_dir: str) -> YouTubeAcquisi
         title=title,
         duration_seconds=duration,
         transcript_payload=transcript_payload,
+        media_acquired=True,
     )

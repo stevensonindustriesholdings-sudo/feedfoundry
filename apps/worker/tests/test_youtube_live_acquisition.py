@@ -126,6 +126,51 @@ def test_stage_live_youtube_source_failure_marks_queue_failed(monkeypatch: pytes
     assert "yt-dlp dependency" in row.acquisition_error
 
 
+def test_stage_live_youtube_source_transcript_only_marks_partial_success(monkeypatch: pytest.MonkeyPatch):
+    import worker as worker_mod
+    from youtube_acquisition import YouTubeAcquisitionResult
+
+    engine = _engine()
+    uploads: list[tuple[str, str]] = []
+
+    transcript = {
+        "schema_version": "1.0",
+        "source": "youtube_transcript",
+        "segments": [{"start": 0, "end": 1, "text": "caption only"}],
+    }
+
+    def fake_acquire(*, youtube_url: str, work_dir: str):
+        return YouTubeAcquisitionResult(
+            local_media_path=None,
+            filename="youtube_transcript.json",
+            content_type="application/json",
+            title="Caption-only title",
+            duration_seconds=None,
+            transcript_payload=transcript,
+            media_acquired=False,
+            nonfatal_error="yt-dlp bot check; public captions acquired",
+        )
+
+    monkeypatch.setattr(worker_mod, "acquire_youtube_source", fake_acquire)
+    monkeypatch.setattr(worker_mod, "_upload_file_to_source_storage", lambda **kwargs: uploads.append((kwargs["bucket"], kwargs["key"])))
+
+    with Session(engine) as session:
+        job, media, _queue = _seed_youtube_job(session)
+        result = worker_mod._stage_live_youtube_source(session, job, media, settings=MagicMock(), src_bucket="source-bucket")
+        session.refresh(media)
+        row = session.get(YoutubeSourceQueue, "ytq_live")
+
+    assert result.transcript_payload == transcript
+    assert result.media_acquired is False
+    assert uploads == []
+    assert media.storage_source_key == "ff-youtube-pending:ytq_live"
+    assert media.intake_kind == "youtube_transcript_only"
+    assert media.original_filename == "youtube_transcript.json"
+    assert row.acquisition_status == "acquisition_succeeded"
+    assert row.temp_media_storage_key is None
+    assert "public captions acquired" in row.acquisition_error
+
+
 def test_process_job_live_flag_calls_acquisition_adapter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import worker as worker_mod
     from youtube_acquisition import YouTubeAcquisitionResult

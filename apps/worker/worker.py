@@ -559,14 +559,21 @@ def _stage_live_youtube_source(
         try:
             result = acquire_youtube_source(youtube_url=row.youtube_url, work_dir=td)
             filename = result.filename or "youtube_source.mp4"
-            key = source_object_key(org_id=job.organisation_id, asset_id=media.id, filename=filename)
-            _upload_file_to_source_storage(
-                bucket=src_bucket,
-                key=key,
-                local_path=result.local_media_path,
-                content_type=result.content_type,
-                settings=settings,
-            )
+            key = None
+            if result.media_acquired and result.local_media_path:
+                key = source_object_key(org_id=job.organisation_id, asset_id=media.id, filename=filename)
+                _upload_file_to_source_storage(
+                    bucket=src_bucket,
+                    key=key,
+                    local_path=result.local_media_path,
+                    content_type=result.content_type,
+                    settings=settings,
+                )
+            elif not result.transcript_payload:
+                raise YouTubeAcquisitionError(
+                    "youtube_acquisition_no_usable_source",
+                    "YouTube acquisition did not return media or a public transcript.",
+                )
         except YouTubeAcquisitionError as exc:
             row.acquisition_status = "acquisition_failed"
             row.acquisition_error = exc.message[:4000]
@@ -581,16 +588,20 @@ def _stage_live_youtube_source(
             session.commit()
             raise JobProcessingFailure("youtube_acquisition_failed", msg) from exc
 
-    media.storage_source_key = key
-    media.intake_kind = "youtube_live"
+    if key:
+        media.storage_source_key = key
+        media.intake_kind = "youtube_live"
+        media.upload_content_type = result.content_type
+    else:
+        media.intake_kind = "youtube_transcript_only"
+        media.upload_content_type = "application/json"
     media.original_filename = filename
-    media.upload_content_type = result.content_type
     if result.duration_seconds is not None:
         media.duration_seconds = result.duration_seconds
     session.add(media)
 
     row.acquisition_status = "acquisition_succeeded"
-    row.acquisition_error = None
+    row.acquisition_error = result.nonfatal_error[:4000] if result.nonfatal_error else None
     row.source_title = result.title
     row.source_duration_seconds = result.duration_seconds
     row.temp_media_storage_key = key
@@ -644,8 +655,18 @@ def process_job(session: Session, job: Job) -> None:
         result = _stage_live_youtube_source(session, job, media, settings=settings, src_bucket=src_bucket)
         acquired_transcript_payload = result.transcript_payload
         youtube_stub = False
-        source_present = True
-        log.info("youtube_live_intake job_id=%s media_asset_id=%s", job.id, media.id)
+        if result.media_acquired and media.storage_source_key and not media.storage_source_key.startswith("ff-youtube-pending:"):
+            source_present = True
+        else:
+            source_present = False
+            missing_source_continued = True
+        log.info(
+            "youtube_live_intake job_id=%s media_asset_id=%s media_acquired=%s transcript=%s",
+            job.id,
+            media.id,
+            result.media_acquired,
+            bool(result.transcript_payload),
+        )
     elif youtube_stub:
         missing_source_continued = True
         log.info("youtube_stub_intake job_id=%s media_asset_id=%s", job.id, media.id)
@@ -748,7 +769,11 @@ def process_job(session: Session, job: Job) -> None:
                 except OSError:
                     pass
     elif missing_source_continued:
-        log.info("skip_media_inspection_staging_missing_source job_id=%s", job.id)
+        if acquired_transcript_payload:
+            transcript_payload = acquired_transcript_payload
+            log.info("skip_media_inspection_transcript_only_source job_id=%s", job.id)
+        else:
+            log.info("skip_media_inspection_staging_missing_source job_id=%s", job.id)
 
     _write_stub_outputs(
         session,
