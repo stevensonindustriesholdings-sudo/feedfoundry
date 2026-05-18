@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 import time
+import tempfile
 import threading
 from pathlib import Path
 
@@ -44,6 +45,7 @@ from app.services.storage import (  # noqa: E402
     job_manifest_object_key,
     job_output_object_key,
     put_json_bytes,
+    source_object_key,
 )
 from app.settings import get_settings  # noqa: E402
 
@@ -64,6 +66,12 @@ from pipeline.transcript_derived_outputs import (  # noqa: E402
 )  # noqa: E402
 
 from ai.feedfoundry_agents.integration import maybe_write_agent_bundle  # noqa: E402
+from youtube_acquisition import (  # noqa: E402
+    YouTubeAcquisitionError,
+    YouTubeAcquisitionResult,
+    acquire_youtube_source,
+    youtube_source_acquisition_live_enabled,
+)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("feedfoundry.worker")
@@ -509,6 +517,105 @@ def _wait_for_source_object(
     return False
 
 
+def _youtube_queue_for_media(session: Session, media: MediaAsset) -> YoutubeSourceQueue | None:
+    pref = "ff-youtube-pending:"
+    sk = media.storage_source_key or ""
+    if sk.startswith(pref):
+        qid = sk[len(pref) :]
+        return session.get(YoutubeSourceQueue, qid)
+    stmt = select(YoutubeSourceQueue).where(YoutubeSourceQueue.media_asset_id == media.id)
+    return session.exec(stmt).first()
+
+
+def _upload_file_to_source_storage(*, bucket: str, key: str, local_path: str, content_type: str, settings) -> None:
+    client = _s3_client(settings)
+    if client is None:
+        raise RuntimeError("storage_not_configured")
+    with open(local_path, "rb") as fp:
+        client.put_object(Bucket=bucket, Key=key, Body=fp, ContentType=content_type or "application/octet-stream")
+
+
+def _stage_live_youtube_source(
+    session: Session,
+    job: Job,
+    media: MediaAsset,
+    *,
+    settings,
+    src_bucket: str,
+) -> YouTubeAcquisitionResult:
+    row = _youtube_queue_for_media(session, media)
+    if row is None:
+        raise JobProcessingFailure(
+            "youtube_source_queue_missing",
+            "youtube_source_queue row was not found for this YouTube intake job.",
+        )
+
+    row.acquisition_status = "acquisition_started"
+    row.acquisition_error = None
+    session.add(row)
+    session.commit()
+
+    with tempfile.TemporaryDirectory(prefix="ff-youtube-") as td:
+        try:
+            result = acquire_youtube_source(youtube_url=row.youtube_url, work_dir=td)
+            filename = result.filename or "youtube_source.mp4"
+            key = source_object_key(org_id=job.organisation_id, asset_id=media.id, filename=filename)
+            _upload_file_to_source_storage(
+                bucket=src_bucket,
+                key=key,
+                local_path=result.local_media_path,
+                content_type=result.content_type,
+                settings=settings,
+            )
+        except YouTubeAcquisitionError as exc:
+            row.acquisition_status = "acquisition_failed"
+            row.acquisition_error = exc.message[:4000]
+            session.add(row)
+            session.commit()
+            raise JobProcessingFailure("youtube_acquisition_failed", exc.message) from exc
+        except Exception as exc:
+            msg = str(exc)[:1000] or type(exc).__name__
+            row.acquisition_status = "acquisition_failed"
+            row.acquisition_error = msg[:4000]
+            session.add(row)
+            session.commit()
+            raise JobProcessingFailure("youtube_acquisition_failed", msg) from exc
+
+    media.storage_source_key = key
+    media.intake_kind = "youtube_live"
+    media.original_filename = filename
+    media.upload_content_type = result.content_type
+    if result.duration_seconds is not None:
+        media.duration_seconds = result.duration_seconds
+    session.add(media)
+
+    row.acquisition_status = "acquisition_succeeded"
+    row.acquisition_error = None
+    row.source_title = result.title
+    row.source_duration_seconds = result.duration_seconds
+    row.temp_media_storage_key = key
+    session.add(row)
+    session.commit()
+    session.refresh(media)
+    session.refresh(row)
+    log.info(
+        "youtube_live_acquisition_succeeded job_id=%s queue_id=%s key=%s transcript=%s",
+        job.id,
+        row.id,
+        key,
+        bool(result.transcript_payload),
+    )
+    return result
+
+
+def _merge_acquired_transcript_audio_meta(transcript_payload: dict, audio_meta: dict) -> dict:
+    payload = dict(transcript_payload)
+    payload.setdefault("schema_version", "1.0")
+    payload.setdefault("source", "youtube_transcript")
+    payload["audio_extraction"] = dict(audio_meta or {})
+    return payload
+
+
 def process_job(session: Session, job: Job) -> None:
     settings = get_settings()
     try:
@@ -532,7 +639,14 @@ def process_job(session: Session, job: Job) -> None:
 
     missing_source_continued = False
     source_present = True
-    if youtube_stub:
+    acquired_transcript_payload: dict | None = None
+    if youtube_stub and youtube_source_acquisition_live_enabled():
+        result = _stage_live_youtube_source(session, job, media, settings=settings, src_bucket=src_bucket)
+        acquired_transcript_payload = result.transcript_payload
+        youtube_stub = False
+        source_present = True
+        log.info("youtube_live_intake job_id=%s media_asset_id=%s", job.id, media.id)
+    elif youtube_stub:
         missing_source_continued = True
         log.info("youtube_stub_intake job_id=%s media_asset_id=%s", job.id, media.id)
     elif not skip_verify and can_head:
@@ -591,17 +705,20 @@ def process_job(session: Session, job: Job) -> None:
                 ffmpeg_binary=os.environ.get("FFMPEG_BINARY"),
                 ffprobe_binary=ffprobe_bin,
             )
-            t_in = TranscriptPipelineInput(
-                job_id=job.id,
-                media_asset_id=media.id,
-                audio_wav_path=wav_path,
-                audio_extraction=audio_meta,
-                media_inspection=media_inspection_payload,
-            )
-            transcript_payload = run_transcript_pipeline_v0(
-                t_in,
-                openai_api_key=getattr(settings, "openai_api_key", "") or "",
-            )
+            if acquired_transcript_payload:
+                transcript_payload = _merge_acquired_transcript_audio_meta(acquired_transcript_payload, audio_meta)
+            else:
+                t_in = TranscriptPipelineInput(
+                    job_id=job.id,
+                    media_asset_id=media.id,
+                    audio_wav_path=wav_path,
+                    audio_extraction=audio_meta,
+                    media_inspection=media_inspection_payload,
+                )
+                transcript_payload = run_transcript_pipeline_v0(
+                    t_in,
+                    openai_api_key=getattr(settings, "openai_api_key", "") or "",
+                )
         except JobProcessingFailure:
             raise
         except Exception as exc:
