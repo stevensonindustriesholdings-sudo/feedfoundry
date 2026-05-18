@@ -37,6 +37,7 @@ _PERSISTED: list[tuple[JobOutputType, str, str]] = [
     (JobOutputType.HOSTED_MANIFEST, "Hosted manifest", "Hosted manifest JSON."),
     (JobOutputType.EXPORT_BUNDLE, "Export bundle", "Zip or bundle object in object storage."),
     (JobOutputType.MEDIA_INSPECTION, "Media inspection", "ffprobe / validation diagnostics for the source file."),
+    (JobOutputType.AGENT_BUNDLE, "Agent bundle", "Hermes-style deterministic agent bundle JSON (opt-in worker stage)."),
 ]
 
 

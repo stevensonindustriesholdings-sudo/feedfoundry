@@ -62,6 +62,8 @@ from pipeline.transcript_derived_outputs import (  # noqa: E402
     derived_from_for_transcript,
 )  # noqa: E402
 
+from ai.feedfoundry_agents.integration import maybe_write_agent_bundle  # noqa: E402
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("feedfoundry.worker")
 
@@ -305,6 +307,17 @@ def _write_stub_outputs(
                 json_payload=None,
             )
         )
+
+    maybe_write_agent_bundle(
+        session=session,
+        job=job,
+        media=media,
+        transcript_payload=transcript_payload,
+        media_inspection_payload=media_inspection_payload,
+        manifest_doc=manifest_doc,
+        out_bucket=out_bucket,
+        settings=settings,
+    )
 
     if media.creator_slug:
         manifest_doc["creator_slug"] = media.creator_slug

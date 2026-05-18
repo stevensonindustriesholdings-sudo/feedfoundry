@@ -48,6 +48,7 @@ _CATALOG_ORDER: list[JobOutputType] = [
     JobOutputType.FAQS,
     JobOutputType.HOSTED_MANIFEST,
     JobOutputType.EXPORT_BUNDLE,
+    JobOutputType.AGENT_BUNDLE,
 ]
 
 

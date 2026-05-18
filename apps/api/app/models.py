@@ -84,6 +84,7 @@ class JobOutputType(str, Enum):
     HOSTED_MANIFEST = "hosted_manifest"
     EXPORT_BUNDLE = "export_bundle"
     MEDIA_INSPECTION = "media_inspection"
+    AGENT_BUNDLE = "agent_bundle"
 
 
 class Organisation(SQLModel, table=True):

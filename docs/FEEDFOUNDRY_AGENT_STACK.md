@@ -45,7 +45,7 @@ This document defines the **15-agent** processing team for FeedFoundry’s creat
 
 ## Integration stance (v0.1)
 
-- **Worker:** optional future hook after transcript + derived outputs; **no** mandatory wire-up in this skeleton.
+- **Worker:** optional hook after transcript + FFmpeg-derived inspection and the main JSON output pass (same `_write_stub_outputs` transaction as manifest/export index). Enable with **`FF_FEEDFOUNDRY_AGENT_BUNDLE_ENABLED`** (`1` / `true` / `yes`; **default off**). When off, behaviour matches the pre-wire worker. When on, the worker writes **`agent_bundle.json`** (`JobOutputType.AGENT_BUNDLE`) via `run_feedfoundry_agent_bundle` before processing minutes are settled; bundle failures raise `agent_bundle_failed` and **do not debit** reserved minutes (settlement runs only after a successful output pass).
 - **API:** unchanged; no new routes required for the bundle.
 - **Tests:** contract tests lock JSON shape for CI.
 
