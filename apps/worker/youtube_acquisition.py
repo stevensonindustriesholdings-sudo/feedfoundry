@@ -96,6 +96,34 @@ def _fetch_public_transcript(youtube_url: str) -> dict[str, Any] | None:
     }
 
 
+def _yt_dlp_options(outtmpl: str) -> dict[str, Any]:
+    opts: dict[str, Any] = {
+        "format": os.environ.get("FF_YOUTUBE_DLP_FORMAT", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
+        "outtmpl": outtmpl,
+        "merge_output_format": "mp4",
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "retries": 2,
+        "fragment_retries": 2,
+        "socket_timeout": float(os.environ.get("FF_YOUTUBE_DLP_SOCKET_TIMEOUT_SECONDS", "30")),
+        "http_headers": {
+            "User-Agent": os.environ.get(
+                "FF_YOUTUBE_DLP_USER_AGENT",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            ),
+            "Accept-Language": os.environ.get("FF_YOUTUBE_DLP_ACCEPT_LANGUAGE", "en-US,en;q=0.9"),
+        },
+    }
+    clients = [c.strip() for c in os.environ.get("FF_YOUTUBE_DLP_PLAYER_CLIENTS", "android,web").split(",") if c.strip()]
+    if clients:
+        opts["extractor_args"] = {"youtube": {"player_client": clients}}
+    max_bytes = int(os.environ.get("FF_YOUTUBE_MAX_DOWNLOAD_BYTES", "536870912"))
+    if max_bytes > 0:
+        opts["max_filesize"] = max_bytes
+    return opts
+
+
 def acquire_youtube_source(*, youtube_url: str, work_dir: str) -> YouTubeAcquisitionResult:
     """Download a public YouTube source file and optionally public captions.
 
@@ -117,20 +145,7 @@ def acquire_youtube_source(*, youtube_url: str, work_dir: str) -> YouTubeAcquisi
     wd = Path(work_dir)
     wd.mkdir(parents=True, exist_ok=True)
     outtmpl = str(wd / "youtube_source.%(ext)s")
-    opts = {
-        "format": os.environ.get("FF_YOUTUBE_DLP_FORMAT", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"),
-        "outtmpl": outtmpl,
-        "merge_output_format": "mp4",
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "retries": 2,
-        "fragment_retries": 2,
-        "socket_timeout": float(os.environ.get("FF_YOUTUBE_DLP_SOCKET_TIMEOUT_SECONDS", "30")),
-    }
-    max_bytes = int(os.environ.get("FF_YOUTUBE_MAX_DOWNLOAD_BYTES", "536870912"))
-    if max_bytes > 0:
-        opts["max_filesize"] = max_bytes
+    opts = _yt_dlp_options(outtmpl)
 
     title = "YouTube source"
     duration = None

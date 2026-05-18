@@ -58,6 +58,17 @@ def _seed_youtube_job(session: Session, *, qid: str = "ytq_live", job_id: str = 
     return job, media, queue
 
 
+def test_youtube_dlp_options_default_to_public_client_headers(monkeypatch: pytest.MonkeyPatch):
+    from youtube_acquisition import _yt_dlp_options
+
+    monkeypatch.delenv("FF_YOUTUBE_DLP_PLAYER_CLIENTS", raising=False)
+    opts = _yt_dlp_options("/tmp/source.%(ext)s")
+
+    assert opts["extractor_args"]["youtube"]["player_client"] == ["android", "web"]
+    assert opts["http_headers"]["Accept-Language"] == "en-US,en;q=0.9"
+    assert "Mozilla/5.0" in opts["http_headers"]["User-Agent"]
+
+
 def test_stage_live_youtube_source_success_uploads_media_and_marks_queue(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import worker as worker_mod
     from youtube_acquisition import YouTubeAcquisitionResult
