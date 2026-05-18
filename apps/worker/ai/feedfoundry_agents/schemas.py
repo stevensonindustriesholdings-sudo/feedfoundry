@@ -275,7 +275,7 @@ class GeoFreshnessOutput(StrictModel):
 
 
 class EvidenceIntegrationStatus(StrictModel):
-    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    evidence_status: Literal["ready", "needs_review", "unavailable", "artifact_write_failed"]
     visual_evidence_available: bool
     transcript_evidence_available: bool
     unsupported_claim_count: int = Field(ge=0)
@@ -287,7 +287,7 @@ class EvidenceIntegrationStatus(StrictModel):
 
 
 class HostedManifestEvidenceHintsOutput(HostedManifestHintsOutput):
-    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    evidence_status: Literal["ready", "needs_review", "unavailable", "artifact_write_failed"]
     visual_evidence_available: bool
     transcript_evidence_available: bool
     unsupported_claim_count: int = Field(ge=0)
@@ -298,7 +298,7 @@ class HostedManifestEvidenceHintsOutput(HostedManifestHintsOutput):
 
 
 class RepositoryManifestEvidenceOutput(RepositoryManifestOutput):
-    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    evidence_status: Literal["ready", "needs_review", "unavailable", "artifact_write_failed"]
     visual_evidence_available: bool
     transcript_evidence_available: bool
     unsupported_claim_count: int = Field(ge=0)
@@ -309,7 +309,7 @@ class RepositoryManifestEvidenceOutput(RepositoryManifestOutput):
 
 
 class GeoFreshnessEvidenceOutput(GeoFreshnessOutput):
-    evidence_status: Literal["ready", "needs_review", "unavailable"]
+    evidence_status: Literal["ready", "needs_review", "unavailable", "artifact_write_failed"]
     visual_evidence_available: bool
     transcript_evidence_available: bool
     unsupported_claim_count: int = Field(ge=0)

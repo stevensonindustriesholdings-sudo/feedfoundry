@@ -38,7 +38,6 @@ from ai.feedfoundry_agents.schemas import (
 from ai.feedfoundry_agents.visual_evidence.orchestrator import run_visual_evidence_squad
 
 ENV_VISUAL_EVIDENCE_FLAG = "FF_WORKER_VISUAL_EVIDENCE_ENABLED"
-VISUAL_EVIDENCE_PACKAGE_URI = "agent_bundle.visual_evidence"
 
 
 def visual_evidence_enabled() -> bool:
@@ -97,7 +96,12 @@ def _build_visual_evidence_input(job_input: FeedFoundryJobInput, hosted_manifest
     }
 
 
-def _summarise_visual_evidence(package: dict) -> EvidenceIntegrationStatus:
+def _summarise_visual_evidence(
+    package: dict,
+    *,
+    visual_evidence_package_uri: str | None = None,
+    artifact_write_failed: bool = False,
+) -> EvidenceIntegrationStatus:
     unsupported = sum(1 for item in package.get("unsupported_claim_report", []) if item.get("support_status") == "unsupported")
     visual_available = bool(package.get("visual_evidence")) and not package.get("escalation_flags", {}).get("missing_visual_evidence", False)
     transcript_available = bool(package.get("transcript_evidence"))
@@ -106,7 +110,12 @@ def _summarise_visual_evidence(package: dict) -> EvidenceIntegrationStatus:
     if unsupported:
         final_confidence = min(final_confidence, 0.74)
     gate_reasons = list(package.get("evidence_gate", {}).get("reasons", []))
-    if visual_available and transcript_available and unsupported == 0 and not human_review and final_confidence >= 0.75:
+    if artifact_write_failed:
+        status = "artifact_write_failed"
+        human_review = True
+        final_confidence = min(final_confidence, 0.74)
+        gate_reasons.append("visual_evidence_artifact_write_failed")
+    elif visual_available and transcript_available and unsupported == 0 and not human_review and final_confidence >= 0.75:
         status = "ready"
     else:
         status = "needs_review"
@@ -117,7 +126,7 @@ def _summarise_visual_evidence(package: dict) -> EvidenceIntegrationStatus:
         unsupported_claim_count=unsupported,
         human_review_required=human_review,
         final_evidence_confidence=round(final_confidence, 3),
-        visual_evidence_package_uri=VISUAL_EVIDENCE_PACKAGE_URI,
+        visual_evidence_package_uri=visual_evidence_package_uri,
         visual_evidence_package_object=package,
         evidence_gate_reason=gate_reasons,
     )
@@ -126,7 +135,7 @@ def _summarise_visual_evidence(package: dict) -> EvidenceIntegrationStatus:
 def _hosted_with_evidence(hosted_manifest_hints, summary: EvidenceIntegrationStatus) -> HostedManifestEvidenceHintsOutput:
     data = hosted_manifest_hints.model_dump()
     outputs = list(data.get("outputs_available") or [])
-    if "visual_evidence.json" not in outputs:
+    if summary.visual_evidence_package_uri and "visual_evidence.json" not in outputs:
         outputs.append("visual_evidence.json")
     data["outputs_available"] = outputs
     data.update(summary.model_dump(exclude={"visual_evidence_package_object"}))
@@ -166,9 +175,19 @@ def _geo_with_evidence(geo_freshness, summary: EvidenceIntegrationStatus) -> Geo
     return GeoFreshnessEvidenceOutput.model_validate(data)
 
 
-def _bundle_with_visual_evidence(bundle: FeedFoundryAgentBundleOutput, job_input: FeedFoundryJobInput) -> FeedFoundryAgentBundleWithVisualEvidenceOutput:
+def _bundle_with_visual_evidence(
+    bundle: FeedFoundryAgentBundleOutput,
+    job_input: FeedFoundryJobInput,
+    *,
+    visual_evidence_package_uri: str | None = None,
+    artifact_write_failed: bool = False,
+) -> FeedFoundryAgentBundleWithVisualEvidenceOutput:
     package = run_visual_evidence_squad(_build_visual_evidence_input(job_input, bundle.hosted_manifest_hints))
-    summary = _summarise_visual_evidence(package)
+    summary = _summarise_visual_evidence(
+        package,
+        visual_evidence_package_uri=visual_evidence_package_uri,
+        artifact_write_failed=artifact_write_failed,
+    )
     return FeedFoundryAgentBundleWithVisualEvidenceOutput.model_validate(
         {
             **bundle.model_dump(),
@@ -181,7 +200,12 @@ def _bundle_with_visual_evidence(bundle: FeedFoundryAgentBundleOutput, job_input
     )
 
 
-def run_feedfoundry_agent_bundle(job_input: FeedFoundryJobInput) -> FeedFoundryAgentBundleOutput | FeedFoundryAgentBundleWithVisualEvidenceOutput:
+def run_feedfoundry_agent_bundle(
+    job_input: FeedFoundryJobInput,
+    *,
+    visual_evidence_package_uri: str | None = None,
+    visual_evidence_artifact_write_failed: bool = False,
+) -> FeedFoundryAgentBundleOutput | FeedFoundryAgentBundleWithVisualEvidenceOutput:
     """Execute the full agent bundle in fixed order (deterministic, no network I/O)."""
     scheduled = [
         "captain",
@@ -251,5 +275,10 @@ def run_feedfoundry_agent_bundle(job_input: FeedFoundryJobInput) -> FeedFoundryA
     judge = run_judge(verification)
     verified_bundle = bundle.model_copy(update={"verification": verification, "judge": judge})
     if visual_evidence_enabled():
-        return _bundle_with_visual_evidence(verified_bundle, job_input)
+        return _bundle_with_visual_evidence(
+            verified_bundle,
+            job_input,
+            visual_evidence_package_uri=visual_evidence_package_uri,
+            artifact_write_failed=visual_evidence_artifact_write_failed,
+        )
     return verified_bundle

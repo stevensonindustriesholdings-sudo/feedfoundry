@@ -193,10 +193,13 @@ def _refresh_hosted_manifest_for_agent_bundle(
     agent_bundle_storage_key: str,
     out_bucket: str,
     settings: object,
+    visual_evidence_storage_key: str | None = None,
 ) -> None:
     """Rebuild ``hosted_manifest.json`` after ``agent_bundle.json`` so ``outputs_available`` matches storage."""
     out_avail = list(planned_types)
     out_avail.insert(out_avail.index(JobOutputType.EXPORT_BUNDLE.value), JobOutputType.AGENT_BUNDLE.value)
+    if visual_evidence_storage_key and "visual_evidence" not in out_avail:
+        out_avail.insert(out_avail.index(JobOutputType.EXPORT_BUNDLE.value), "visual_evidence")
     df = derived_from_for_transcript(transcript_payload)
     payload = build_hosted_manifest_from_transcript(
         transcript=transcript_payload,
@@ -213,6 +216,11 @@ def _refresh_hosted_manifest_for_agent_bundle(
             "storage_key": agent_bundle_storage_key,
         }
     }
+    if visual_evidence_storage_key:
+        payload["artifacts"]["visual_evidence"] = {
+            "filename": "visual_evidence.json",
+            "storage_key": visual_evidence_storage_key,
+        }
     stmt = select(JobOutput).where(
         JobOutput.job_id == job.id,
         JobOutput.output_type == JobOutputType.HOSTED_MANIFEST,
@@ -385,6 +393,10 @@ def _write_stub_outputs(
         settings=settings,
     )
     if agent_bundle_key and transcript_payload is not None:
+        visual_evidence_key = next(
+            (o.get("storage_key") for o in manifest_doc["outputs"] if o.get("filename") == "visual_evidence.json"),
+            None,
+        )
         _refresh_hosted_manifest_for_agent_bundle(
             session=session,
             job=job,
@@ -395,6 +407,7 @@ def _write_stub_outputs(
             agent_bundle_storage_key=agent_bundle_key,
             out_bucket=out_bucket,
             settings=settings,
+            visual_evidence_storage_key=visual_evidence_key,
         )
 
     if media.creator_slug:

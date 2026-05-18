@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Any
 
-from ai.feedfoundry_agents.orchestrator import run_feedfoundry_agent_bundle
+from ai.feedfoundry_agents.orchestrator import run_feedfoundry_agent_bundle, visual_evidence_enabled
 from ai.feedfoundry_agents.schemas import (
     FeedFoundryJobInput,
     MediaMetaIn,
@@ -143,7 +143,6 @@ def maybe_write_agent_bundle(
     )
     try:
         bundle = run_feedfoundry_agent_bundle(job_input)
-        body = bundle.model_dump_json(indent=2).encode("utf-8")
     except Exception as exc:
         log.error(
             "agent_bundle_failed job_id=%s error=%s",
@@ -156,7 +155,36 @@ def maybe_write_agent_bundle(
         ) from exc
 
     org_id = job.organisation_id
+    if visual_evidence_enabled():
+        visual_status = getattr(bundle, "visual_evidence", None)
+        visual_package = getattr(visual_status, "visual_evidence_package_object", None)
+        if visual_package:
+            visual_filename = "visual_evidence.json"
+            visual_key = job_output_object_key(org_id=org_id, job_id=job.id, filename=visual_filename)
+            try:
+                put_json_bytes(
+                    bucket=out_bucket,
+                    key=visual_key,
+                    body=json.dumps(visual_package, indent=2).encode("utf-8"),
+                    settings=settings,
+                )
+                manifest_doc["outputs"].append(
+                    {"output_type": "visual_evidence", "storage_key": visual_key, "filename": visual_filename}
+                )
+                bundle = run_feedfoundry_agent_bundle(job_input, visual_evidence_package_uri=visual_key)
+            except Exception as exc:
+                log.error(
+                    "visual_evidence_artifact_failed job_id=%s error=%s",
+                    job.id,
+                    json.dumps({"error_type": type(exc).__name__, "error": str(exc)[:2000]}),
+                )
+                bundle = run_feedfoundry_agent_bundle(
+                    job_input,
+                    visual_evidence_artifact_write_failed=True,
+                )
+
     filename = "agent_bundle.json"
+    body = bundle.model_dump_json(indent=2).encode("utf-8")
     key = job_output_object_key(org_id=org_id, job_id=job.id, filename=filename)
     put_json_bytes(bucket=out_bucket, key=key, body=body, settings=settings)
     manifest_doc["outputs"].append(

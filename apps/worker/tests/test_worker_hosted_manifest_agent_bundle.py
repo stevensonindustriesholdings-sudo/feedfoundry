@@ -71,6 +71,56 @@ def test_refresh_hosted_manifest_adds_agent_bundle_when_written(monkeypatch: pyt
     assert uploaded and uploaded[0][1].endswith("hosted_manifest.json")
 
 
+def test_refresh_hosted_manifest_references_visual_evidence_only_when_storage_key_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    uploaded: list[tuple[str, str]] = []
+
+    def _put(*, bucket, key, body, settings):
+        uploaded.append((key, body.decode("utf-8")))
+
+    monkeypatch.setattr(worker_mod, "put_json_bytes", _put)
+    jo = MagicMock(storage_key="orgs/o1/jobs/j1/outputs/hosted_manifest.json", json_payload=None)
+    session = MagicMock()
+
+    def _exec(_stmt):
+        m = MagicMock()
+        m.first.return_value = jo
+        return m
+
+    session.exec.side_effect = _exec
+    planned = [JobOutputType.RAW_TRANSCRIPT.value, JobOutputType.HOSTED_MANIFEST.value, JobOutputType.EXPORT_BUNDLE.value]
+    tr = {"schema_version": "1.0", "segments": [{"start": 0.0, "end": 1.0, "text": "hello"}]}
+
+    worker_mod._refresh_hosted_manifest_for_agent_bundle(
+        session=session,
+        job=MagicMock(id="j1", organisation_id="o1"),
+        media=MagicMock(creator_slug="c", asset_slug="a", original_filename="clip.mp4"),
+        transcript_payload=tr,
+        media_inspection_payload=None,
+        planned_types=planned,
+        agent_bundle_storage_key="orgs/o1/jobs/j1/outputs/agent_bundle.json",
+        out_bucket="out-bucket",
+        settings=MagicMock(),
+        visual_evidence_storage_key=None,
+    )
+    assert "visual_evidence" not in jo.json_payload["outputs_available"]
+    assert "visual_evidence" not in jo.json_payload.get("artifacts", {})
+
+    worker_mod._refresh_hosted_manifest_for_agent_bundle(
+        session=session,
+        job=MagicMock(id="j1", organisation_id="o1"),
+        media=MagicMock(creator_slug="c", asset_slug="a", original_filename="clip.mp4"),
+        transcript_payload=tr,
+        media_inspection_payload=None,
+        planned_types=planned,
+        agent_bundle_storage_key="orgs/o1/jobs/j1/outputs/agent_bundle.json",
+        out_bucket="out-bucket",
+        settings=MagicMock(),
+        visual_evidence_storage_key="orgs/o1/jobs/j1/outputs/visual_evidence.json",
+    )
+    assert "visual_evidence" in jo.json_payload["outputs_available"]
+    assert jo.json_payload["artifacts"]["visual_evidence"]["storage_key"].endswith("/visual_evidence.json")
+
+
 def test_refresh_hosted_manifest_skips_without_row(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(worker_mod, "put_json_bytes", MagicMock())
 

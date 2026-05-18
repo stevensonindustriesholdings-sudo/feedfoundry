@@ -129,8 +129,10 @@ def test_visual_evidence_integration_introduces_no_provider_call_tokens() -> Non
     paths = [
         WORKER_ROOT / "ai" / "feedfoundry_agents" / "orchestrator.py",
         WORKER_ROOT / "ai" / "feedfoundry_agents" / "schemas.py",
+        WORKER_ROOT / "ai" / "feedfoundry_agents" / "integration.py",
         WORKER_ROOT / "ai" / "feedfoundry_agents" / "visual_evidence" / "orchestrator.py",
         WORKER_ROOT / "ai" / "feedfoundry_agents" / "visual_evidence" / "schemas.py",
+        WORKER_ROOT / "worker.py",
     ]
     forbidden = ["openai(", "openrouter", "httpx.", "requests.", "anthropic", "provider_client"]
     haystack = "\n".join(path.read_text(encoding="utf-8").lower() for path in paths)
