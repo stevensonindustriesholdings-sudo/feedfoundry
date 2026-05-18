@@ -1,0 +1,35 @@
+{
+  "trend_id": "cozy-chaos-operator-001",
+  "trend_name": "Cozy Chaos Desk Goblin",
+  "buyer_persona": "remote workers, creators, and caffeine-powered office gremlins",
+  "trend_mechanic": "self-identification phrase for messy productivity rituals",
+  "primary_platform": "tiktok",
+  "evidence": [
+    {
+      "source_id": "operator_seed_rt_001",
+      "url": null,
+      "observed_at": "2026-05-18T12:00:00Z",
+      "confidence_0_1": 0.72
+    }
+  ],
+  "products": [
+    {
+      "product_type": "tshirt",
+      "title": "Cozy Chaos tee",
+      "slogan": "Cozy chaos is my workflow",
+      "colorway": "washed black / cream",
+      "mockup_uri": "uploaded://mockups/cozy-chaos-tee.png"
+    },
+    {
+      "product_type": "mug",
+      "title": "Desk Goblin mug",
+      "slogan": "Do not perceive my tabs",
+      "colorway": "cream / neon pink",
+      "mockup_uri": null
+    }
+  ],
+  "legal_terms_to_avoid": ["TikTok", "Stanley"],
+  "duration_seconds": 15,
+  "aspect_ratio": "9:16",
+  "brand_lane": "trenderly_pod_haul"
+}
