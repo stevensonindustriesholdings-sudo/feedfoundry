@@ -13,6 +13,7 @@ from app.routes import (
     catalog,
     credits,
     health,
+    intake,
     jobs,
     manifests,
     observability,
@@ -63,6 +64,10 @@ _OPENAPI_TAGS = [
     {"name": "observability", "description": "Version/build metadata and structured readiness checks."},
     {"name": "system", "description": "Internal worker / provider hints (no secrets)."},
     {"name": "youtube_source_queue", "description": "Enqueue-only YouTube URL backlog (no scraping)."},
+    {
+        "name": "intake",
+        "description": "Launch MVP intake: gated YouTube video→job, playlist parent row, upload→job shortcut.",
+    },
 ]
 
 app = FastAPI(title="FeedFoundry API", lifespan=lifespan, openapi_tags=_OPENAPI_TAGS)
@@ -120,3 +125,4 @@ app.include_router(stripe_webhooks.router, prefix="/v1")
 app.include_router(admin.router, prefix="/v1")
 app.include_router(system_surface.router, prefix="/v1")
 app.include_router(youtube_queue.router, prefix="/v1")
+app.include_router(intake.router, prefix="/v1")

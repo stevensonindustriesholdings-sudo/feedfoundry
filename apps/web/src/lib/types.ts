@@ -134,11 +134,34 @@ export type ReadyResponse = {
 /** GET /v1/system/worker-hints — no secrets. */
 export type WorkerHintsResponse = {
   ff_ai_live_calls_enabled: boolean;
+  ff_youtube_source_acquisition_enabled?: boolean;
+  ff_youtube_source_acquisition_live?: boolean;
+  ff_feedfoundry_agent_bundle_enabled?: boolean;
+  ff_worker_ai_enrichment_enabled?: boolean;
   openai_configured: boolean;
   openrouter_configured: boolean;
   ai_routing_modules_loaded: number;
   youtube_source_queue_enabled: boolean;
   notes?: string;
+};
+
+export type IntakeYoutubeVideoResponse = {
+  queue_id: string;
+  youtube_url: string;
+  media_asset_id: string;
+  job_id: string;
+  acquisition_status: string;
+  estimated_processing_minutes: number;
+  reserved_processing_minutes: number;
+  estimated_processing_hours: number;
+};
+
+export type IntakeYoutubePlaylistResponse = {
+  queue_id: string;
+  playlist_url: string;
+  status: string;
+  queue_kind: string;
+  detail?: string;
 };
 
 export type YoutubeQueueEnqueueResponse = {
@@ -154,6 +177,11 @@ export type YoutubeQueueItemResponse = {
   status: string;
   notes?: string | null;
   created_at?: string | null;
+  queue_kind?: string | null;
+  job_id?: string | null;
+  media_asset_id?: string | null;
+  acquisition_status?: string | null;
+  acquisition_error?: string | null;
 };
 
 export type YoutubeQueueListResponse = {

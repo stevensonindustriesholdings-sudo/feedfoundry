@@ -30,6 +30,9 @@ function isAllowed(method: string, segments: string[]): boolean {
     if (p === "v1/uploads/presign") return true;
     if (p === "v1/uploads/complete") return true;
     if (p === "v1/jobs") return true;
+    if (p === "v1/intake/youtube-video") return true;
+    if (p === "v1/intake/youtube-playlist") return true;
+    if (p === "v1/intake/upload") return true;
     if (p === "v1/youtube-source-queue") return true;
     if (/^v1\/jobs\/[^/]+\/cancel$/.test(p)) return true;
     return false;

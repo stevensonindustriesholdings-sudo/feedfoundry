@@ -40,6 +40,11 @@ class YoutubeQueueItemResponse(BaseModel):
     status: str
     notes: Optional[str] = None
     created_at: Optional[str] = None
+    queue_kind: Optional[str] = None
+    job_id: Optional[str] = None
+    media_asset_id: Optional[str] = None
+    acquisition_status: Optional[str] = None
+    acquisition_error: Optional[str] = None
 
 
 class YoutubeQueueEnqueueResponse(BaseModel):
@@ -106,6 +111,11 @@ def list_queued_urls(
             status=r.status,
             notes=r.notes,
             created_at=r.created_at.isoformat() if r.created_at else None,
+            queue_kind=getattr(r, "queue_kind", None) or "video",
+            job_id=getattr(r, "job_id", None),
+            media_asset_id=getattr(r, "media_asset_id", None),
+            acquisition_status=getattr(r, "acquisition_status", None),
+            acquisition_error=getattr(r, "acquisition_error", None),
         )
         for r in rows
     ]

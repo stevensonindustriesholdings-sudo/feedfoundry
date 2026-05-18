@@ -29,12 +29,17 @@ def worker_hints(_: None = Depends(verify_internal_key)) -> dict[str, Any]:
     modules = routing.get("modules") or {}
     return {
         "ff_ai_live_calls_enabled": _env_truthy("FF_AI_LIVE_CALLS_ENABLED"),
+        "ff_youtube_source_acquisition_enabled": _env_truthy("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED"),
+        "ff_youtube_source_acquisition_live": _env_truthy("FF_YOUTUBE_SOURCE_ACQUISITION_LIVE"),
+        "ff_feedfoundry_agent_bundle_enabled": _env_truthy("FF_FEEDFOUNDRY_AGENT_BUNDLE_ENABLED"),
+        "ff_worker_ai_enrichment_enabled": _env_truthy("FF_WORKER_AI_ENRICHMENT_ENABLED"),
         "openai_configured": bool(openai_k) and not _is_placeholder(openai_k),
         "openrouter_configured": bool(or_k) and not _is_placeholder(or_k),
         "ai_routing_modules_loaded": len(modules),
         "youtube_source_queue_enabled": True,
         "notes": (
             "Live AI calls require FF_AI_LIVE_CALLS_ENABLED=1 and a configured provider key; "
-            "worker logs counts only."
+            "worker logs counts only. YouTube video→job intake requires FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED=1 "
+            "(default off). Optional FF_WORKER_AI_ENRICHMENT_ENABLED is reserved for future worker-side enrichment caps."
         ),
     }

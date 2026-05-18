@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import JSON, Column, Index, UniqueConstraint
+from sqlalchemy import JSON, Column, Index, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -172,6 +172,8 @@ class MediaAsset(SQLModel, table=True):
     media_type: MediaType
     upload_content_type: Optional[str] = Field(default=None, max_length=255)
     storage_source_key: str
+    """How this asset entered the engine: ``upload`` (presigned PUT) or ``youtube_stub`` (intake placeholder)."""
+    intake_kind: str = Field(default="upload", max_length=32)
     duration_seconds: Optional[float] = None
     file_size_bytes: Optional[int] = None
     ffprobe_json: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
@@ -280,6 +282,14 @@ class YoutubeSourceQueue(SQLModel, table=True):
     status: str = Field(default="queued", max_length=32)
     notes: Optional[str] = Field(default=None, max_length=1024)
     created_at: datetime = Field(default_factory=utcnow)
+    queue_kind: str = Field(default="video", max_length=32)
+    job_id: Optional[str] = Field(default=None, foreign_key="jobs.id", index=True)
+    media_asset_id: Optional[str] = Field(default=None, foreign_key="media_assets.id")
+    acquisition_status: str = Field(default="pending", max_length=64)
+    acquisition_error: Optional[str] = Field(default=None, sa_column=Column(Text))
+    source_title: Optional[str] = Field(default=None, max_length=512)
+    source_duration_seconds: Optional[float] = None
+    temp_media_storage_key: Optional[str] = Field(default=None, max_length=1024)
 
 
 class StripeWebhookEvent(SQLModel, table=True):

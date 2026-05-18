@@ -25,6 +25,7 @@ from app.models import (  # noqa: E402
     JobStatus,
     MediaAsset,
     WorkerHeartbeat,
+    YoutubeSourceQueue,
     utcnow,
 )
 from app.services.credit_ledger import (  # noqa: E402
@@ -228,6 +229,22 @@ def _refresh_hosted_manifest_for_agent_bundle(
     key = row.storage_key
     body = json.dumps(payload, indent=2).encode("utf-8")
     put_json_bytes(bucket=out_bucket, key=key, body=body, settings=settings)
+
+
+def _finalize_youtube_stub_queue(session: Session, media: MediaAsset) -> None:
+    """Mark queue row after stub pipeline (no object storage source file)."""
+    if (media.intake_kind or "upload") != "youtube_stub":
+        return
+    pref = "ff-youtube-pending:"
+    sk = media.storage_source_key or ""
+    if not sk.startswith(pref):
+        return
+    qid = sk[len(pref) :]
+    row = session.get(YoutubeSourceQueue, qid)
+    if not row:
+        return
+    row.acquisition_status = "stub_pipeline_completed"
+    session.add(row)
 
 
 def _write_stub_outputs(
@@ -492,6 +509,8 @@ def process_job(session: Session, job: Job) -> None:
     if not media:
         raise JobProcessingFailure("media_missing", "Job media asset record was not found.")
 
+    youtube_stub = (media.intake_kind or "upload") == "youtube_stub"
+
     src_bucket = bucket_for_source(settings)
     skip_verify = os.environ.get("FF_SKIP_SOURCE_VERIFY", "").lower() in ("1", "true", "yes")
     strict_source = os.environ.get("FF_STRICT_SOURCE_VERIFY", "").lower() in ("1", "true", "yes")
@@ -500,7 +519,10 @@ def process_job(session: Session, job: Job) -> None:
 
     missing_source_continued = False
     source_present = True
-    if not skip_verify and can_head:
+    if youtube_stub:
+        missing_source_continued = True
+        log.info("youtube_stub_intake job_id=%s media_asset_id=%s", job.id, media.id)
+    elif not skip_verify and can_head:
         max_wait = float(os.environ.get("FF_SOURCE_HEAD_MAX_WAIT_SECONDS", "45"))
         source_present = _wait_for_source_object(
             bucket=src_bucket,
@@ -605,6 +627,7 @@ def process_job(session: Session, job: Job) -> None:
         media_inspection_payload=media_inspection_payload,
         transcript_payload=transcript_payload,
     )
+    _finalize_youtube_stub_queue(session, media)
 
     _settle_processing_allowance(session, job)
 
