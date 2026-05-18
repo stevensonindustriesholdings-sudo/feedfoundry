@@ -452,3 +452,231 @@ Do not enable `FF_YOUTUBE_SOURCE_ACQUISITION_LIVE` for this smoke test.
   "notes": "Migration completed via Railway migrate service inside private network; API health/ready/OpenAPI route checks passed."
 }
 ```
+
+## Update — Live YouTube source acquisition enabled
+
+Timestamp: 2026-05-18T20:23:30Z
+
+### Repo/Railway sanity
+
+Repo:
+
+```text
+/Users/stevelee/Documents/feedfoundry
+```
+
+Branch:
+
+```text
+feat/feedfoundry-launch-mvp-flow
+```
+
+Railway link:
+
+```text
+Project: FeedFoundry - V0.1
+Environment: production
+API service: api-v2-IQho
+Worker service: worker-v2
+```
+
+Pre-existing unrelated local file remained uncommitted:
+
+```text
+apps/api/uv.lock
+```
+
+### Internal API auth
+
+Canonical internal API environment variable:
+
+```text
+FF_INTERNAL_API_KEY
+```
+
+Source code proof:
+
+```text
+apps/api/app/settings.py -> Settings.ff_internal_api_key
+apps/api/app/auth.py -> verify_internal_key() compares Bearer token or X-FF-Internal-Key to get_settings().ff_internal_api_key
+```
+
+Supported request auth forms:
+
+```text
+Authorization: Bearer <FF_INTERNAL_API_KEY value>
+X-FF-Internal-Key: <FF_INTERNAL_API_KEY value>  # legacy
+```
+
+Supported organisation headers:
+
+```text
+X-Org-Id
+X-FF-Organisation-Id
+```
+
+Railway variable-name presence check, with values not printed:
+
+| Service | FF_INTERNAL_API_KEY present |
+|---|---|
+| api-v2-IQho | YES |
+| worker-v2 | YES |
+
+Where Steve gets the token:
+
+```text
+Railway → FeedFoundry - V0.1 → production → api-v2-IQho → Variables → FF_INTERNAL_API_KEY
+```
+
+### Live YouTube acquisition flags
+
+Hermes set these non-secret feature flags:
+
+| Service | Flag | Value |
+|---|---|---|
+| api-v2-IQho | FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED | 1 |
+| api-v2-IQho | FF_YOUTUBE_SOURCE_ACQUISITION_LIVE | 1 |
+| worker-v2 | FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED | 1 |
+| worker-v2 | FF_YOUTUBE_SOURCE_ACQUISITION_LIVE | 1 |
+| worker-v2 | FF_FEEDFOUNDRY_AGENT_BUNDLE_ENABLED | 1 |
+
+Commands run:
+
+```bash
+railway variable set FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED=1 --service api-v2-IQho
+railway variable set FF_YOUTUBE_SOURCE_ACQUISITION_LIVE=1 --service api-v2-IQho
+railway variable set FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED=1 --service worker-v2
+railway variable set FF_YOUTUBE_SOURCE_ACQUISITION_LIVE=1 --service worker-v2
+railway variable set FF_FEEDFOUNDRY_AGENT_BUNDLE_ENABLED=1 --service worker-v2
+```
+
+Hermes did not set or change:
+
+```text
+OPENAI_API_KEY
+FF_WORKER_AI_ENRICHMENT_ENABLED
+FF_WORKER_AI_ENRICHMENT_OPENAI_LIVE
+Stripe variables/configuration
+```
+
+Note: variable-name inspection showed `OPENAI_API_KEY` and `FF_WORKER_AI_ENRICHMENT_ENABLED` already present on worker-v2 before this update. Hermes did not create, print, or mutate those values.
+
+### Redeploy result
+
+API redeploy command:
+
+```bash
+railway up --service api-v2-IQho --detach --message "Hermes enable live YouTube acquisition API"
+```
+
+API redeploy result:
+
+```text
+Deployment ID: 7b86b216-5ad1-4988-b938-69d59414114c
+Status: SUCCESS
+```
+
+Worker redeploy command:
+
+```bash
+railway up --service worker-v2 --detach --message "Hermes enable live YouTube acquisition worker"
+```
+
+Worker redeploy result:
+
+```text
+Deployment ID: a4b55f70-1dd2-4081-9754-4d821d34a7ca
+Status: SUCCESS
+```
+
+### Health/ready result
+
+Health command:
+
+```bash
+curl -fsS https://api-v2-iqho-production.up.railway.app/health
+```
+
+Health result: PASS.
+
+Ready command:
+
+```bash
+curl -fsS https://api-v2-iqho-production.up.railway.app/ready
+```
+
+Ready result: PASS (`ready=true`).
+
+Ready notes:
+
+```text
+environment=staging
+openai_key_present=false
+```
+
+### Live YouTube smoke result
+
+Live smoke was not executed because `FEEDFOUNDRY_INTERNAL_API_TOKEN` was not present in the local Hermes environment. Hermes did not fetch or print the secret value from Railway.
+
+No job_id or queue_id was created in this run.
+
+Required Steve action:
+
+```bash
+cd /Users/stevelee/Documents/feedfoundry
+export FEEDFOUNDRY_INTERNAL_API_TOKEN='<copy-value-from-railway>'
+```
+
+Token source:
+
+```text
+Railway → FeedFoundry - V0.1 → production → api-v2-IQho → Variables → FF_INTERNAL_API_KEY
+```
+
+Then rerun the authenticated live-acquisition smoke:
+
+```bash
+curl -fsS -X POST 'https://api-v2-iqho-production.up.railway.app/v1/intake/youtube-video' \
+  -H "Authorization: Bearer ${FEEDFOUNDRY_INTERNAL_API_TOKEN}" \
+  -H 'X-Org-Id: org_smoke_feedfoundry_launch' \
+  -H 'Content-Type: application/json' \
+  --data '{"youtube_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","requested_outputs":["transcript","metadata","agent_bundle"]}'
+```
+
+### Remaining blockers / exact next step
+
+Blocker:
+
+```text
+Local FEEDFOUNDRY_INTERNAL_API_TOKEN is missing, so Hermes could not run the authenticated POST smoke without exposing or guessing secrets.
+```
+
+Exact next step:
+
+```text
+Steve, get the internal API token from:
+Railway → FeedFoundry - V0.1 → production → api-v2-IQho → Variables → FF_INTERNAL_API_KEY
+
+Then run:
+
+export FEEDFOUNDRY_INTERNAL_API_TOKEN='<copy-value-from-railway>'
+
+Then rerun this smoke.
+```
+
+### Live acquisition Hermes proof block
+
+```json
+{
+  "hermes_acp_check": "PASS",
+  "hermes_smoke": "NOT_RUN",
+  "execution_lane": "hermes_terminal_deployment_operator",
+  "direct_openai_or_openrouter_used": false,
+  "agent_stack_or_skill_used": true,
+  "agent_stack_or_skill_name": "deployment_operator",
+  "proof_artifacts": [
+    "docs/FEEDFOUNDRY_HERMES_RAILWAY_DEPLOY_REPORT.md"
+  ],
+  "notes": "Live YouTube acquisition flags enabled on API and worker; both services redeployed and health/ready passed. Authenticated live smoke blocked only by missing local FEEDFOUNDRY_INTERNAL_API_TOKEN."
+}
+```
