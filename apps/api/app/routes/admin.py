@@ -45,6 +45,14 @@ def admin_list_youtube_queue(
                 "organisation_id": r.organisation_id,
                 "youtube_url": r.youtube_url,
                 "status": r.status,
+                "queue_kind": getattr(r, "queue_kind", None),
+                "media_asset_id": getattr(r, "media_asset_id", None),
+                "job_id": getattr(r, "job_id", None),
+                "acquisition_status": getattr(r, "acquisition_status", None),
+                "acquisition_error": getattr(r, "acquisition_error", None),
+                "temp_media_storage_key": getattr(r, "temp_media_storage_key", None),
+                "source_title": getattr(r, "source_title", None),
+                "source_duration_seconds": getattr(r, "source_duration_seconds", None),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
