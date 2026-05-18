@@ -11,6 +11,7 @@ import type {
   IntakeYoutubePlaylistResponse,
   IntakeYoutubeVideoResponse,
   JobListResponse,
+  JobSummaryItem,
   JobOutputsResponse,
   JobStatusResponse,
   PresignUploadResponse,
@@ -23,6 +24,61 @@ import type { ClientError } from "@/lib/errors";
 const defaultOutputs = ["transcript", "chapters", "metadata", "hosted_manifest", "ctas", "faqs", "export_bundle"];
 
 type JsonPreview = { title: string; data: unknown };
+type YoutubeQueueItem = YoutubeQueueListResponse["items"][number];
+
+const YOUTUBE_FOCUS_OUTPUTS = [
+  "raw_transcript",
+  "clean_transcript",
+  "transcript",
+  "media_inspection",
+  "visual_evidence",
+  "agent_bundle",
+  "hosted_manifest",
+  "export_bundle",
+];
+
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return "—";
+  const whole = Math.max(0, Math.round(seconds));
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const s = whole % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function outputLabel(type: string): string {
+  const labels: Record<string, string> = {
+    raw_transcript: "Transcript",
+    clean_transcript: "Transcript summary",
+    transcript: "Transcript",
+    media_inspection: "Media inspection",
+    visual_evidence: "Visual evidence",
+    hosted_manifest: "Hosted manifest",
+    agent_bundle: "Agent bundle",
+    export_bundle: "Export bundle",
+  };
+  return labels[type] ?? type;
+}
+
+function stringifyPreview(data: unknown): string {
+  if (typeof data === "string") return data;
+  return JSON.stringify(data, null, 2);
+}
+
+function findYoutubeRow(rows: YoutubeQueueItem[] | undefined, selectedJobId: string | null): YoutubeQueueItem | null {
+  if (!rows || !selectedJobId) return null;
+  return rows.find((row) => row.job_id === selectedJobId) ?? null;
+}
+
+function findJobSummary(rows: JobSummaryItem[] | undefined, selectedJobId: string | null): JobSummaryItem | null {
+  if (!rows || !selectedJobId) return null;
+  return rows.find((row) => row.job_id === selectedJobId) ?? null;
+}
+
+function outputExists(outputs: JobOutputsResponse | null, types: string[]): boolean {
+  return Boolean(outputs?.outputs.some((output) => types.includes(output.type)));
+}
 
 export default function PortalPage() {
   const orgId = useMemo(() => getOrgId(), []);
@@ -121,8 +177,10 @@ export default function PortalPage() {
         "fact_sheet",
         "export_bundle",
         "media_inspection",
+        "visual_evidence",
         "agent_bundle",
         "raw_transcript",
+        "clean_transcript",
       ]);
       const previews: JsonPreview[] = [];
       for (const o of outs.data.outputs) {
@@ -275,6 +333,23 @@ export default function PortalPage() {
                   ? detailErr
                   : null;
 
+  const selectedYoutubeRow = findYoutubeRow(orgQueue?.items, selectedJobId);
+  const selectedJobSummary = findJobSummary(recentJobs?.jobs, selectedJobId);
+  const focusOutputs = jobOutputs?.outputs?.filter((o) => YOUTUBE_FOCUS_OUTPUTS.includes(o.type)) ?? [];
+  const previewByType = new Map(jsonPreviews.map((p) => [p.title, p.data]));
+  const youtubeAcquisitionFailed = Boolean(
+    selectedJobSummary?.source_kind === "youtube" &&
+      (selectedJobSummary?.acquisition_error || selectedJobSummary?.acquisition_status?.includes("blocked")),
+  );
+  const failureReason = youtubeAcquisitionFailed
+    ? "YouTube acquisition failed. This can happen when YouTube blocks server-side fetches. Try another public URL or upload the file directly."
+    : (jobDetail?.failure_message ??
+      jobDetail?.failure_reason ??
+      jobDetail?.failure_code ??
+      selectedYoutubeRow?.acquisition_error ??
+      selectedJobSummary?.acquisition_error ??
+      null);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -421,20 +496,26 @@ export default function PortalPage() {
           <table className="mt-3 w-full text-left text-sm">
             <thead>
               <tr className="border-b border-surface-border text-xs text-zinc-500">
+                <th className="py-2">Source</th>
+                <th className="py-2">Duration</th>
                 <th className="py-2">Status</th>
-                <th className="py-2">Kind</th>
                 <th className="py-2">Acquisition</th>
-                <th className="py-2">URL</th>
+                <th className="py-2">Failure / URL</th>
               </tr>
             </thead>
             <tbody>
               {orgQueue.items.map((row) => (
-                <tr key={row.id} className="border-b border-surface-border/50">
+                <tr key={row.id} className="border-b border-surface-border/50 align-top">
+                  <td className="max-w-[240px] py-2 text-xs">
+                    <p className="truncate text-zinc-200">{row.source_title ?? "Untitled YouTube source"}</p>
+                    <p className="mt-1 font-mono text-[11px] text-zinc-600">{row.queue_kind ?? "video"}</p>
+                  </td>
+                  <td className="py-2 font-mono text-xs text-zinc-300">{formatDuration(row.source_duration_seconds)}</td>
                   <td className="py-2 font-mono text-xs">{row.status}</td>
-                  <td className="py-2 text-xs">{row.queue_kind ?? "—"}</td>
                   <td className="py-2 text-xs">{row.acquisition_status ?? "—"}</td>
-                  <td className="max-w-[240px] truncate py-2 text-xs text-zinc-400">
-                    <a href={row.youtube_url} className="text-accent" target="_blank" rel="noreferrer">
+                  <td className="max-w-[320px] py-2 text-xs text-zinc-400">
+                    {row.acquisition_error ? <p className="mb-1 text-red-300">{row.acquisition_error}</p> : null}
+                    <a href={row.youtube_url} className="block truncate text-accent" target="_blank" rel="noreferrer">
                       {row.youtube_url}
                     </a>
                   </td>
@@ -460,16 +541,30 @@ export default function PortalPage() {
         {recentJobs?.jobs?.length ? (
           <ul className="mt-3 space-y-1 text-sm">
             {recentJobs.jobs.map((j) => (
-              <li key={j.job_id}>
-                <button
-                  type="button"
-                  className={`font-mono text-xs ${selectedJobId === j.job_id ? "text-accent" : "text-zinc-300"}`}
-                  onClick={() => void loadJobDetail(j.job_id)}
-                >
-                  {j.job_id}
-                </button>{" "}
-                <span className="text-zinc-500">{j.status}</span>{" "}
-                <span className="text-zinc-600">{j.current_stage ?? ""}</span>
+              <li key={j.job_id} className="rounded border border-surface-border/50 bg-surface/30 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      className={`font-mono text-xs ${selectedJobId === j.job_id ? "text-accent" : "text-zinc-300"}`}
+                      onClick={() => void loadJobDetail(j.job_id)}
+                    >
+                      {j.job_id}
+                    </button>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {j.source_kind ?? "upload"} · {j.status} · {j.current_stage ?? "—"}
+                    </p>
+                    {j.source_title ? <p className="mt-1 truncate text-xs text-zinc-300">{j.source_title}</p> : null}
+                    {j.acquisition_error ? <p className="mt-1 text-xs text-red-300">{j.acquisition_error}</p> : null}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-[11px] text-zinc-500 sm:grid-cols-4">
+                    <span>Duration {formatDuration(j.source_duration_seconds)}</span>
+                    <span>Acq {j.acquisition_status ?? "—"}</span>
+                    <span className={j.has_transcript ? "text-accent" : "text-zinc-600"}>Transcript {j.has_transcript ? "yes" : "no"}</span>
+                    <span className={j.has_agent_bundle ? "text-accent" : "text-zinc-600"}>Agent {j.has_agent_bundle ? "yes" : "no"}</span>
+                    <span className={j.has_hosted_manifest ? "text-accent" : "text-zinc-600"}>Manifest {j.has_hosted_manifest ? "yes" : "no"}</span>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -480,18 +575,90 @@ export default function PortalPage() {
 
       {selectedJobId ? (
         <section className="rounded-xl border border-surface-border bg-surface-raised/30 p-5 space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-100">Job detail — {selectedJobId}</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-100">YouTube job outputs — {selectedJobId}</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Completed source context, acquisition state, and the key deliverables Base44 should surface.
+              </p>
+            </div>
+            {jobDetail ? <span className="rounded-full border border-surface-border px-3 py-1 text-xs text-zinc-300">{jobDetail.status}</span> : null}
+          </div>
           {detailErr && detailErr.code !== "unauthorized" ? (
             <p className="text-sm text-red-300">{detailErr.message}</p>
           ) : null}
-          {jobDetail ? (
-            <pre className="overflow-x-auto rounded bg-black/40 p-3 text-xs text-zinc-300">
-              {JSON.stringify(jobDetail, null, 2)}
-            </pre>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-surface-border/60 bg-surface/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Source</p>
+              <p className="mt-2 text-sm font-medium text-zinc-100">{selectedYoutubeRow?.source_title ?? selectedJobSummary?.source_title ?? "—"}</p>
+              <p className="mt-1 font-mono text-xs text-zinc-400">
+                {selectedJobSummary?.source_kind ?? "upload"} · Duration: {formatDuration(selectedYoutubeRow?.source_duration_seconds ?? selectedJobSummary?.source_duration_seconds)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-surface-border/60 bg-surface/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Status / stage</p>
+              <p className="mt-2 font-mono text-sm text-zinc-100">{jobDetail?.status ?? selectedJobSummary?.status ?? "—"}</p>
+              <p className="mt-1 text-xs text-zinc-500">{jobDetail?.current_stage ?? selectedJobSummary?.current_stage ?? "—"}</p>
+            </div>
+            <div className="rounded-lg border border-surface-border/60 bg-surface/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Acquisition status</p>
+              <p className="mt-2 font-mono text-sm text-zinc-100">{selectedYoutubeRow?.acquisition_status ?? selectedJobSummary?.acquisition_status ?? "—"}</p>
+              <p className="mt-1 text-xs text-zinc-500">Queue: {selectedYoutubeRow?.status ?? "—"}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-2 text-xs sm:grid-cols-3">
+            <div className={outputExists(jobOutputs, ["raw_transcript", "clean_transcript"]) || selectedJobSummary?.has_transcript ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
+              Transcript {outputExists(jobOutputs, ["raw_transcript", "clean_transcript"]) || selectedJobSummary?.has_transcript ? "exists" : "missing"}
+            </div>
+            <div className={outputExists(jobOutputs, ["agent_bundle"]) || selectedJobSummary?.has_agent_bundle ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
+              Agent bundle {outputExists(jobOutputs, ["agent_bundle"]) || selectedJobSummary?.has_agent_bundle ? "exists" : "missing"}
+            </div>
+            <div className={outputExists(jobOutputs, ["hosted_manifest"]) || selectedJobSummary?.has_hosted_manifest ? "rounded border border-accent/30 bg-accent/10 p-2 text-accent" : "rounded border border-surface-border/60 p-2 text-zinc-500"}>
+              Hosted manifest {outputExists(jobOutputs, ["hosted_manifest"]) || selectedJobSummary?.has_hosted_manifest ? "exists" : "missing"}
+            </div>
+          </div>
+
+          {failureReason ? (
+            <div role="alert" className="rounded-lg border border-danger/50 bg-danger/10 p-3 text-sm text-red-100">
+              <p className="font-semibold">Failure reason</p>
+              <p className="mt-1">{failureReason}</p>
+            </div>
           ) : null}
+
+          {focusOutputs.length ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {focusOutputs.map((o) => (
+                <article key={o.type} className="rounded-lg border border-surface-border/60 bg-surface/40 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-zinc-100">{outputLabel(o.type)}</h3>
+                      <p className="mt-1 font-mono text-xs text-zinc-500">{o.type} · {o.format}</p>
+                    </div>
+                    <a href={o.download_url} className="shrink-0 text-xs font-medium text-accent hover:underline" target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  </div>
+                  {previewByType.has(o.type) ? (
+                    <pre className="mt-3 max-h-72 overflow-auto rounded bg-black/40 p-3 text-xs text-zinc-300">
+                      {stringifyPreview(previewByType.get(o.type))}
+                    </pre>
+                  ) : (
+                    <p className="mt-3 text-xs text-zinc-500">Preview not fetched; open the signed URL.</p>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : jobOutputs ? (
+            <p className="rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-amber-100">
+              No transcript, media inspection, visual evidence, agent bundle, hosted manifest, or export bundle outputs are ready for this job yet.
+            </p>
+          ) : null}
+
           {jobOutputs?.outputs?.length ? (
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-200">Downloads</h3>
+            <details className="rounded border border-surface-border/60 p-3">
+              <summary className="cursor-pointer text-sm text-zinc-200">All downloads ({jobOutputs.outputs.length})</summary>
               <ul className="mt-2 space-y-1 text-sm">
                 {jobOutputs.outputs.map((o) => (
                   <li key={o.type}>
@@ -502,16 +669,16 @@ export default function PortalPage() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </details>
           ) : null}
-          {jsonPreviews.map((p) => (
-            <details key={p.title} className="rounded border border-surface-border/60 p-2">
-              <summary className="cursor-pointer text-sm text-zinc-200">{p.title}.json preview</summary>
-              <pre className="mt-2 max-h-64 overflow-auto text-xs text-zinc-400">
-                {typeof p.data === "string" ? p.data : JSON.stringify(p.data, null, 2)}
+          {jobDetail ? (
+            <details className="rounded border border-surface-border/60 p-3">
+              <summary className="cursor-pointer text-sm text-zinc-200">Raw job status payload</summary>
+              <pre className="mt-2 overflow-x-auto rounded bg-black/40 p-3 text-xs text-zinc-300">
+                {JSON.stringify(jobDetail, null, 2)}
               </pre>
             </details>
-          ))}
+          ) : null}
         </section>
       ) : null}
     </div>

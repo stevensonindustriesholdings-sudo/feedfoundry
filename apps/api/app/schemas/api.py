@@ -64,6 +64,9 @@ class JobStatusResponse(BaseModel):
     actual_processing_minutes_charged: Optional[int] = None
     estimated_processing_hours: Optional[float] = None
     visual_evidence: Optional[dict[str, Any]] = None
+    failure_code: Optional[str] = None
+    failure_reason: Optional[str] = None
+    failure_message: Optional[str] = None
     # Deprecated legacy aliases preserved one release for older clients.
     estimated_credits: Optional[int] = Field(default=None, deprecated=True)
     reserved_credits: Optional[int] = Field(default=None, deprecated=True)
@@ -77,6 +80,14 @@ class JobSummaryItem(BaseModel):
     current_stage: Optional[str] = None
     media_asset_id: str
     created_at: Optional[str] = None
+    source_kind: Optional[str] = None
+    source_title: Optional[str] = None
+    source_duration_seconds: Optional[float] = None
+    acquisition_status: Optional[str] = None
+    acquisition_error: Optional[str] = None
+    has_transcript: bool = False
+    has_agent_bundle: bool = False
+    has_hosted_manifest: bool = False
 
 
 class JobListResponse(BaseModel):

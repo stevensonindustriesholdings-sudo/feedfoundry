@@ -20,7 +20,7 @@ from sqlmodel import Session, select
 from app.auth import require_organisation_id, verify_internal_key
 from app.db import get_session
 from app.http_errors import problem
-from app.models import Job, JobStatus, MediaAsset, MediaAssetStatus
+from app.models import Job, JobOutput, JobOutputType, JobStatus, MediaAsset, MediaAssetStatus, YoutubeSourceQueue
 from app.schemas.api import (
     CreateJobRequest,
     CreateJobResponse,
@@ -62,10 +62,24 @@ def _job_status_response(job: Job, visual_evidence: dict | None = None) -> JobSt
         actual_processing_minutes_charged=charged,
         estimated_processing_hours=processing_minutes_to_approx_hours(est),
         visual_evidence=visual_evidence,
+        failure_code=job.failure_code,
+        failure_reason=job.failure_reason,
+        failure_message=job.failure_message,
         estimated_credits=est,
         reserved_credits=resv,
         actual_credits_so_far=charged,
     )
+
+
+def _output_presence_for_job(session: Session, job_id: str) -> dict[str, bool]:
+    rows = session.exec(select(JobOutput.output_type).where(JobOutput.job_id == job_id)).all()
+    output_types = {row.value for row in rows if isinstance(row, JobOutputType)}
+    return {
+        "has_transcript": JobOutputType.RAW_TRANSCRIPT.value in output_types
+        or JobOutputType.CLEAN_TRANSCRIPT.value in output_types,
+        "has_agent_bundle": JobOutputType.AGENT_BUNDLE.value in output_types,
+        "has_hosted_manifest": JobOutputType.HOSTED_MANIFEST.value in output_types,
+    }
 
 
 @router.get("", response_model=JobListResponse)
@@ -101,6 +115,19 @@ def list_jobs(
     rows = session.exec(stmt).all()
     items: list[JobSummaryItem] = []
     for job in rows:
+        media = session.get(MediaAsset, job.media_asset_id)
+        yt_row = session.exec(select(YoutubeSourceQueue).where(YoutubeSourceQueue.job_id == job.id)).first()
+        source_kind = (
+            "youtube"
+            if yt_row or (media and media.intake_kind.startswith("youtube"))
+            else ("upload" if media else None)
+        )
+        source_title = yt_row.source_title if yt_row else None
+        source_duration_seconds = (
+            yt_row.source_duration_seconds
+            if yt_row and yt_row.source_duration_seconds is not None
+            else (media.duration_seconds if media else None)
+        )
         items.append(
             JobSummaryItem(
                 job_id=job.id,
@@ -109,6 +136,12 @@ def list_jobs(
                 current_stage=job.current_stage,
                 media_asset_id=job.media_asset_id,
                 created_at=job.created_at.isoformat() if job.created_at else None,
+                source_kind=source_kind,
+                source_title=source_title,
+                source_duration_seconds=source_duration_seconds,
+                acquisition_status=yt_row.acquisition_status if yt_row else None,
+                acquisition_error=yt_row.acquisition_error if yt_row else None,
+                **_output_presence_for_job(session, job.id),
             )
         )
     return JobListResponse(jobs=items, total=int(total))

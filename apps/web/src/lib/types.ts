@@ -73,6 +73,7 @@ export type JobStatusResponse = {
   actual_credits_so_far?: number | null;
   /** Present when API exposes failure details (optional until backend extends OpenAPI). */
   failure_code?: string | null;
+  failure_reason?: string | null;
   failure_message?: string | null;
 };
 
@@ -83,6 +84,14 @@ export type JobSummaryItem = {
   current_stage?: string | null;
   media_asset_id: string;
   created_at?: string | null;
+  source_kind?: string | null;
+  source_title?: string | null;
+  source_duration_seconds?: number | null;
+  acquisition_status?: string | null;
+  acquisition_error?: string | null;
+  has_transcript?: boolean;
+  has_agent_bundle?: boolean;
+  has_hosted_manifest?: boolean;
 };
 
 export type JobListResponse = {
@@ -182,6 +191,8 @@ export type YoutubeQueueItemResponse = {
   media_asset_id?: string | null;
   acquisition_status?: string | null;
   acquisition_error?: string | null;
+  source_title?: string | null;
+  source_duration_seconds?: number | null;
 };
 
 export type YoutubeQueueListResponse = {

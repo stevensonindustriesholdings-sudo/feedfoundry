@@ -45,6 +45,8 @@ class YoutubeQueueItemResponse(BaseModel):
     media_asset_id: Optional[str] = None
     acquisition_status: Optional[str] = None
     acquisition_error: Optional[str] = None
+    source_title: Optional[str] = None
+    source_duration_seconds: Optional[float] = None
 
 
 class YoutubeQueueEnqueueResponse(BaseModel):
@@ -116,6 +118,8 @@ def list_queued_urls(
             media_asset_id=getattr(r, "media_asset_id", None),
             acquisition_status=getattr(r, "acquisition_status", None),
             acquisition_error=getattr(r, "acquisition_error", None),
+            source_title=getattr(r, "source_title", None),
+            source_duration_seconds=getattr(r, "source_duration_seconds", None),
         )
         for r in rows
     ]
