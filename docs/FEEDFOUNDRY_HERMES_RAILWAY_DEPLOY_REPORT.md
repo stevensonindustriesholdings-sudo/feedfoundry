@@ -680,3 +680,77 @@ Then rerun this smoke.
   "notes": "Live YouTube acquisition flags enabled on API and worker; both services redeployed and health/ready passed. Authenticated live smoke blocked only by missing local FEEDFOUNDRY_INTERNAL_API_TOKEN."
 }
 ```
+
+## 2026-05-18 live YouTube intake 500 repair
+
+Time: 2026-05-18T21:06:35Z
+
+Original failing request:
+
+```text
+POST /v1/intake/youtube-video
+Railway request id: ezPxJHHrTqSWYKvess7a6g
+Result before repair: HTTP 500 Internal Server Error
+```
+
+Root cause:
+
+```text
+The production database had Alembic recorded at 010_launch_mvp_intake_fields, but the youtube_source_queue table was absent. The API attempted to insert the accepted YouTube URL queue row and Postgres raised psycopg2.errors.UndefinedTable: relation "youtube_source_queue" does not exist. Because the route did not translate that schema fault, FastAPI returned an unstructured 500.
+```
+
+Patch summary:
+
+```text
+- Added forward-only Alembic repair migration 011_repair_youtube_source_queue.
+- The migration creates youtube_source_queue with launch-MVP columns when missing and idempotently repairs missing launch-MVP columns/indexes/FKs if the table already exists.
+- Added structured API fallback for missing youtube_source_queue schema: HTTP 503 with code youtube_intake_schema_unavailable instead of 500.
+- Extended /v1/intake/youtube-video success response with status and live_acquisition_enabled while preserving queue_id/job_id/acquisition_status.
+- Added focused tests for auth-required, success response shape, and missing-schema structured failure with no job creation.
+```
+
+Tests run:
+
+```text
+cd /Users/stevelee/Documents/feedfoundry
+scripts/smoke_launch_mvp.sh
+Result: PASS
+
+cd /Users/stevelee/Documents/feedfoundry/apps/api
+PYTHONPATH=. uv run --python 3.11 python -m pytest tests/test_intake_launch_mvp.py -q
+Result: 6 passed
+```
+
+Deploy result:
+
+```text
+railway up --service api-v2-IQho --detach
+Deployment/build id: 07d8f760-ef19-43eb-b355-956ebc18e464
+Result: api-v2-IQho Online; /health 200; /ready 200
+
+railway up --service migrate --detach
+Deployment/build id: 01cc0394-9d8f-46c0-8ecb-95669e92da47
+Result: migrate Completed; migration log shows Running upgrade 010_launch_mvp_intake_fields -> 011_repair_youtube_source_queue and 011_repair_youtube_source_queue (head); Migration complete
+
+worker-v2 was not redeployed because worker code was not changed. Worker is Online and logs show worker_started with database=ok.
+```
+
+Retry smoke result:
+
+```text
+Not executed by Hermes in this shell: FEEDFOUNDRY_INTERNAL_API_TOKEN is not present in the local environment or launchctl environment visible to this agent. Hermes did not fetch, print, or write any secret token.
+
+HTTP status: not run
+Response body: none
+job_id: none
+queue_id: none
+live acquisition attempted: no retry request was sent
+worker picked it up: no new retry job was available
+output status: none
+```
+
+Next step:
+
+```text
+Run the same authenticated curl from a shell where FEEDFOUNDRY_INTERNAL_API_TOKEN is exported. Expected post-repair outcome is no unstructured 500: either a structured success response with queue_id/job_id/acquisition_status/live_acquisition_enabled or a structured non-500 error with exact code/message.
+```

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.models import AnnualAccess, CreditWallet, Job, MediaAsset, Organisation, User, YoutubeSourceQueue, utcnow
@@ -42,6 +43,19 @@ def test_intake_youtube_video_disabled(api_client, db_session: Session, monkeypa
     assert body.get("code") == "youtube_intake_disabled"
 
 
+def test_intake_youtube_video_auth_required(api_client, db_session: Session, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED", "1")
+    org_id = "org_intake_auth"
+    _bootstrap_org(db_session, org_id)
+    r = api_client.post(
+        "/v1/intake/youtube-video",
+        headers={"X-Org-Id": org_id},
+        json={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "requested_outputs": ["transcript"]},
+    )
+    assert r.status_code == 401
+    assert r.json()["code"] == "unauthorized"
+
+
 def test_intake_youtube_video_creates_stub_media_and_job(api_client, db_session: Session, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED", "1")
     org_id = "org_intake_vid"
@@ -55,6 +69,9 @@ def test_intake_youtube_video_creates_stub_media_and_job(api_client, db_session:
     data = r.json()
     assert data["job_id"]
     assert data["queue_id"]
+    assert data["status"] == "queued"
+    assert data["acquisition_status"] == "queued_for_worker"
+    assert data["live_acquisition_enabled"] is False
     ma = db_session.get(MediaAsset, data["media_asset_id"])
     assert ma is not None
     assert ma.intake_kind == "youtube_stub"
@@ -64,6 +81,28 @@ def test_intake_youtube_video_creates_stub_media_and_job(api_client, db_session:
     assert q.job_id == data["job_id"]
     job = db_session.get(Job, data["job_id"])
     assert job is not None
+
+
+def test_intake_youtube_video_schema_missing_returns_structured_503_without_debit(
+    api_client, db_session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED", "1")
+    org_id = "org_intake_missing_schema"
+    _bootstrap_org(db_session, org_id, processing_minutes=123)
+    db_session.connection().execute(text("DROP TABLE youtube_source_queue"))
+    db_session.commit()
+
+    r = api_client.post(
+        "/v1/intake/youtube-video",
+        headers={"Authorization": "Bearer test-internal-key", "X-Org-Id": org_id},
+        json={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "requested_outputs": ["transcript"]},
+    )
+
+    assert r.status_code == 503, r.text
+    body = r.json()
+    assert body["code"] == "youtube_intake_schema_unavailable"
+    assert "youtube_source_queue" in body["message"]
+    assert db_session.exec(select(Job).where(Job.organisation_id == org_id)).all() == []
 
 
 def test_intake_youtube_playlist_parent_only(api_client, db_session: Session, monkeypatch: pytest.MonkeyPatch):

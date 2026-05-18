@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlmodel import Session
 
 from app.auth import require_organisation_id, verify_internal_key
@@ -36,6 +37,31 @@ def youtube_source_acquisition_enabled() -> bool:
     return _env_truthy("FF_YOUTUBE_SOURCE_ACQUISITION_ENABLED")
 
 
+def youtube_source_acquisition_live_enabled() -> bool:
+    """When true, worker should attempt live public-URL acquisition instead of stub handling."""
+    return _env_truthy("FF_YOUTUBE_SOURCE_ACQUISITION_LIVE")
+
+
+def _is_missing_youtube_queue_schema(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "youtube_source_queue" in text and (
+        "does not exist" in text or "no such table" in text or "undefinedtable" in text
+    )
+
+
+def _youtube_queue_schema_unavailable(exc: BaseException):
+    if _is_missing_youtube_queue_schema(exc):
+        raise problem(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="youtube_intake_schema_unavailable",
+            message=(
+                "YouTube intake schema is unavailable: youtube_source_queue table is missing. "
+                "Run the latest forward Alembic migration before retrying."
+            ),
+        ) from exc
+    raise exc
+
+
 class IntakeYoutubeVideoRequest(BaseModel):
     youtube_url: str = Field(..., min_length=12, max_length=2048)
     requested_outputs: list[str] = Field(default_factory=lambda: ["transcript", "hosted_manifest"])
@@ -43,11 +69,13 @@ class IntakeYoutubeVideoRequest(BaseModel):
 
 
 class IntakeYoutubeVideoResponse(BaseModel):
+    status: str
     queue_id: str
     youtube_url: str
     media_asset_id: str
     job_id: str
     acquisition_status: str
+    live_acquisition_enabled: bool
     estimated_processing_minutes: int
     reserved_processing_minutes: int
     estimated_processing_hours: float
@@ -106,7 +134,11 @@ def intake_youtube_video(
         temp_media_storage_key=None,
     )
     session.add(row)
-    session.flush()
+    try:
+        session.flush()
+    except (OperationalError, ProgrammingError) as exc:
+        session.rollback()
+        _youtube_queue_schema_unavailable(exc)
 
     pending_key = f"ff-youtube-pending:{row.id}"
     media = MediaAsset(
@@ -142,11 +174,13 @@ def intake_youtube_video(
         session.commit()
 
     return IntakeYoutubeVideoResponse(
+        status="queued",
         queue_id=row.id,
         youtube_url=normalized,
         media_asset_id=media.id,
         job_id=created.job_id,
         acquisition_status="queued_for_worker",
+        live_acquisition_enabled=youtube_source_acquisition_live_enabled(),
         estimated_processing_minutes=created.estimated_processing_minutes,
         reserved_processing_minutes=created.reserved_processing_minutes,
         estimated_processing_hours=created.estimated_processing_hours,
